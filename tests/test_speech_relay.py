@@ -53,6 +53,9 @@ def _assistant(main, session=None):
     assistant._loop = object()
     assistant._speaking_lock = threading.Lock()
     assistant._is_speaking = False
+    assistant._readout_active = False
+    assistant._own_speech_words = []
+    assistant._own_speech_lock = threading.Lock()
     assistant.set_speaking = lambda value: None
     return assistant
 
@@ -241,3 +244,180 @@ def test_stopping_speech_stops_local_playback():
             sys.modules["sounddevice"] = original
 
     assert calls == ["stop"]
+
+
+# -- the microphone must not hear the assistant ------------------------------
+# The read-out is played through the speakers while the mic is open, so the
+# live session transcribed the assistant's own words as the user. That echo
+# called stop_native_speech() and cut the answer off after two words, and it
+# was logged as a user turn (and answered by the model).
+
+@pytest.mark.parametrize("heard", [
+    "what is your name",
+    "my name is sydro",
+    "what is your name my name is sydro",
+    "your name",   # a two-word fragment from the start of the read-out
+    "i translated",  # a fragment from the middle of the read-out
+])
+def test_the_apps_own_words_are_recognised(heard):
+    from main import _looks_like_own_speech
+
+    spoken = "What is your name? My name is sydro. I translated the Japanese text for you."
+    assert _looks_like_own_speech(heard, spoken) is True
+
+
+def test_a_short_fragment_is_echo_while_reading_out(monkeypatch, main_module):
+    """Two stray words during a read-out are our own audio, not a command."""
+    main = main_module
+    assistant = _assistant(main)
+    assistant._remember_own_speech("Your document has been created and saved, sir.")
+    assistant._readout_active = True
+    assert assistant._is_own_speech_echo("created and") is True
+    assert assistant._is_own_speech_echo("unrelated words") is False
+
+
+def test_one_word_barge_in_always_stops_the_read_out(monkeypatch, main_module):
+    main = main_module
+    assistant = _assistant(main)
+    assistant._remember_own_speech("Your document has been created and saved, sir.")
+    assistant._readout_active = True
+    assert assistant._is_own_speech_echo("stop") is False
+    assert assistant._is_own_speech_echo("wait") is False
+
+
+@pytest.mark.parametrize("heard", [
+    "stop",
+    "turn the volume down",
+    "what time is it",
+    "open my email",
+    "play some music please",
+])
+def test_a_real_interruption_is_not_mistaken_for_echo(heard):
+    from main import _looks_like_own_speech
+
+    spoken = "What is your name? My name is sydro. I translated the Japanese text for you."
+    assert _looks_like_own_speech(heard, spoken) is False
+
+
+def test_the_assistant_remembers_what_it_said(main_module):
+    main = main_module
+    assistant = object.__new__(main.NIGHTFALLLive)
+    assistant._own_speech_words = []
+    assistant._own_speech_lock = threading.Lock()
+
+    assistant._remember_own_speech("Your document has been created and saved, sir.")
+    assert assistant._is_own_speech_echo("your document has been created") is True
+    assert assistant._is_own_speech_echo("open chrome") is False
+
+
+def test_the_rolling_window_stays_small(main_module):
+    main = main_module
+    assistant = object.__new__(main.NIGHTFALLLive)
+    assistant._own_speech_words = []
+    assistant._own_speech_lock = threading.Lock()
+
+    for i in range(60):
+        assistant._remember_own_speech(f"sentence number {i} with a few words in it")
+    assert len(assistant._own_speech_words) <= 160
+
+
+def test_a_read_out_stops_the_mic_from_reaching_the_model(monkeypatch, main_module):
+    main = main_module
+    assistant = _assistant(main)
+    assistant._readout_active = False
+
+    played = threading.Event()
+    monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": b"pcm")
+
+    def fake_play(pcm, rate=24000):
+        played.set()
+        return True
+
+    monkeypatch.setattr(main, "_play_pcm_audio", fake_play)
+    assistant.speak("a status update")
+    assert played.wait(5), "the read-out never played"
+    assert assistant._readout_active is False, "the flag must be cleared afterwards"
+
+
+def test_the_mic_callback_skips_the_read_out(main_module):
+    import inspect
+
+    source = inspect.getsource(main_module.NIGHTFALLLive._listen_audio)
+    assert "_readout_active" in source
+    # the guard must come before the audio is queued to the session
+    assert source.index("_readout_active") < source.index("self.ui.muted or")
+
+
+def test_the_receive_loop_ignores_its_own_voice(main_module):
+    import inspect
+
+    source = inspect.getsource(main_module.NIGHTFALLLive._receive_audio)
+    echo_at = source.index("_is_own_speech_echo")
+    stop_at = source.index("stop_native_speech")
+    assert echo_at < stop_at, "the echo must be filtered before speech is stopped"
+    assert "_remember_own_speech" in source
+
+
+# -- playback must survive any output device ---------------------------------
+
+def test_pcm_is_resampled_for_a_48khz_device():
+    import array
+
+    from main import _resample_pcm16
+
+    src = array.array("h", [0, 1000, 0, -1000] * 25)  # 0.1 s at 24 kHz
+    out = _resample_pcm16(src.tobytes(), 24000, 48000)
+    samples = array.array("h")
+    samples.frombytes(out)
+    assert len(samples) == 200, len(samples)
+    assert max(samples) > 900 and min(samples) < -900
+
+
+def test_pcm_is_untouched_when_the_rate_matches():
+    from main import _resample_pcm16
+
+    pcm = b"\x00\x01" * 10
+    assert _resample_pcm16(pcm, 24000, 24000) == pcm
+
+
+def test_tiny_or_empty_pcm_does_not_crash():
+    from main import _resample_pcm16
+
+    assert _resample_pcm16(b"", 24000, 48000) == b""
+    assert _resample_pcm16(b"\x01", 24000, 48000) == b"\x01"
+
+
+def test_playback_uses_the_device_rate(monkeypatch, main_module):
+    main = main_module
+    played = {}
+
+    class FakeSD:
+        class default:
+            device = (0, 1)
+
+        @staticmethod
+        def query_devices(index, kind):
+            return {"default_samplerate": 48000.0}
+
+        @staticmethod
+        def play(samples, rate):
+            played["rate"] = rate
+            played["count"] = len(samples)
+
+        @staticmethod
+        def wait():
+            return None
+
+    fake_numpy = types.ModuleType("numpy")
+    fake_numpy.int16 = "int16"
+    fake_numpy.frombuffer = lambda data, dtype=None: list(data)
+    monkeypatch.setitem(__import__("sys").modules, "sounddevice", FakeSD)
+    monkeypatch.setitem(__import__("sys").modules, "numpy", fake_numpy)
+
+    import array
+    pcm = array.array("h", [0, 500] * 60).tobytes()
+    assert main._play_pcm_audio(pcm, 24000) is True
+    assert played["rate"] == 48000
+    # 120 samples at 24 kHz become 240 samples at 48 kHz (2 bytes each here,
+    # since the fake numpy hands back the raw bytes).
+    assert played["count"] == 480

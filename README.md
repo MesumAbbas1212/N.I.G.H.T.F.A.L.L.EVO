@@ -127,8 +127,12 @@
 - App text (status updates, Quick Action answers, notifications) is read out by synthesizing it directly in
   Zephyr's voice and playing it locally - it is no longer injected into the live session as a turn. That relay
   used to make the assistant answer its own status messages ("Acknowledged…") and even run tools on them.
-- If speech generation is unavailable, the local voice takes over, and a failed speech quota is not retried for
-  every message.
+- The microphone is kept away from the session while a read-out plays, and any echo that still reaches the
+  transcriber is recognised as the assistant's own voice: it no longer cuts the answer off after two words, is
+  never logged as you, and is never answered. A real interruption ("stop", or a normal sentence) still stops it.
+- TTS audio is resampled to the output device's own rate (PortAudio does not resample) so Zephyr's voice works on
+  44.1/48 kHz-only sound cards; if speech generation is unavailable, the local voice takes over and a failed
+  speech quota is not retried for every message.
 
 ### 🪶 Resource use
 - Heavy stacks stay out of the boot path: OpenCV, mss, PortAudio and numpy are imported only when screen or

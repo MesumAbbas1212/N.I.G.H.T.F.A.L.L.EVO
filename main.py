@@ -221,6 +221,78 @@ def _gemini_tts_pcm(text: str, voice: str = "Zephyr") -> bytes | None:
     return None
 
 
+def _normalize_words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", (text or "").lower())
+
+
+#: Single words that always mean "stop talking", never our own echo.
+_INTERRUPT_WORDS = {"stop", "wait", "quiet", "silence", "cancel", "enough", "shut"}
+
+
+def _looks_like_own_speech(heard: str, spoken: str, threshold: float = 0.6) -> bool:
+    """True when *heard* is the assistant's own voice leaking into the mic.
+
+    The app speaks through the speakers while the microphone is open, so the
+    live session transcribes the assistant's own words as if the user had said
+    them. That echo used to interrupt the read-out after two words and was
+    logged as a user turn (and answered by the model).
+    """
+    heard_words = _normalize_words(heard)
+    if not heard_words:
+        return False
+    spoken_words = set(_normalize_words(spoken))
+    if not spoken_words:
+        return False
+    hits = sum(1 for word in heard_words if word in spoken_words)
+    return (hits / len(heard_words)) >= threshold
+
+
+#: One read-out at a time: ``sounddevice.play`` stops whatever is playing, so
+#: overlapping status messages used to cut each other off.
+_TTS_PLAY_LOCK = threading.Lock()
+
+
+def _resample_pcm16(pcm: bytes, src_rate: int, dst_rate: int) -> bytes:
+    """Linear resample of 16-bit mono PCM.
+
+    PortAudio does not resample: asking a 48 kHz-only output device for the
+    24 kHz TTS audio fails, which would drop every answer back to the offline
+    voice. Converting the samples first keeps Zephyr's voice on any device.
+    """
+    if not pcm or src_rate <= 0 or dst_rate <= 0 or src_rate == dst_rate:
+        return pcm
+    import array
+
+    src = array.array("h")
+    src.frombytes(pcm[: len(pcm) - (len(pcm) % 2)])
+    if len(src) < 2:
+        return pcm
+
+    n_out = int(len(src) * dst_rate / src_rate)
+    if n_out < 2:
+        return pcm
+    out = array.array("h", bytes(2 * n_out))
+    step = (len(src) - 1) / (n_out - 1)
+    for i in range(n_out):
+        pos = i * step
+        idx = int(pos)
+        nxt = idx + 1 if idx + 1 < len(src) else idx
+        frac = pos - idx
+        out[i] = int(src[idx] + (src[nxt] - src[idx]) * frac)
+    return out.tobytes()
+
+
+def _output_sample_rate(preferred: int = RECEIVE_SAMPLE_RATE) -> int:
+    """The output device's own rate, falling back to the preferred one."""
+    try:
+        import sounddevice as sd
+        info = sd.query_devices(sd.default.device[1], "output")
+        rate = int((info or {}).get("default_samplerate") or 0)
+        return rate or preferred
+    except Exception:
+        return preferred
+
+
 def _play_pcm_audio(pcm: bytes, rate: int = RECEIVE_SAMPLE_RATE) -> bool:
     """Play 16-bit mono PCM through the local sound device."""
     try:
@@ -230,7 +302,10 @@ def _play_pcm_audio(pcm: bytes, rate: int = RECEIVE_SAMPLE_RATE) -> bool:
         print(f"[NIGHTFALL TTS] playback unavailable: {exc}")
         return False
     try:
-        sd.play(np.frombuffer(pcm, dtype=np.int16), rate)
+        device_rate = _output_sample_rate(rate)
+        if device_rate != rate:
+            pcm = _resample_pcm16(pcm, rate, device_rate)
+        sd.play(np.frombuffer(pcm, dtype=np.int16), device_rate)
         sd.wait()
         return True
     except Exception as exc:
@@ -2306,6 +2381,15 @@ class NIGHTFALLLive:
         #: (image bytes, question) captured for the live session by the
         #: screen_process tool, delivered right after the tool response.
         self._pending_screen_frame = None
+        #: True while the app is reading text out loud through the speakers.
+        #: The microphone is kept away from the model during that time, so the
+        #: assistant cannot hear (and answer) its own voice.
+        self._readout_active = False
+        #: Words the app itself has spoken recently (TTS read-outs and the
+        #: live model's own answers). The microphone hears them too, and they
+        #: must never be mistaken for the user talking.
+        self._own_speech_words: list[str] = []
+        self._own_speech_lock = threading.Lock()
         #: When the live session was last handed an image the *user* supplied
         #: (a snip or attachment). While that image is the subject of the
         #: conversation, screen_process must not capture the screen again.
@@ -4664,17 +4748,52 @@ class NIGHTFALLLive:
             return
         self._speak_verbatim(text)
 
+    def _remember_own_speech(self, text: str) -> None:
+        words = _normalize_words(text)
+        if not words:
+            return
+        if not hasattr(self, "_own_speech_words"):
+            self._own_speech_words = []
+            self._own_speech_lock = threading.Lock()
+        with self._own_speech_lock:
+            self._own_speech_words.extend(words)
+            # A rolling window is enough: only fresh echo matters.
+            del self._own_speech_words[:-160]
+
+    def _is_own_speech_echo(self, heard: str) -> bool:
+        if not hasattr(self, "_own_speech_words"):
+            return False
+        with self._own_speech_lock:
+            spoken = " ".join(self._own_speech_words)
+        if _looks_like_own_speech(heard, spoken):
+            return True
+        # While the app is reading out (or the live model is speaking) a very
+        # short transcription is far more likely to be the tail of our own
+        # audio than a real interruption - unless it is a barge-in word.
+        words = _normalize_words(heard)
+        if not words or (len(words) == 1 and words[0] in _INTERRUPT_WORDS):
+            return False
+        if getattr(self, "_readout_active", False) or getattr(self, "_is_speaking", False):
+            if len(words) <= 2:
+                spoken_words = set(_normalize_words(spoken))
+                return any(word in spoken_words for word in words)
+        return False
+
     def _speak_verbatim(self, text: str) -> None:
         """Generate and play *text* without involving the conversation."""
+        self._remember_own_speech(text)
+
         def _worker():
+            self._readout_active = True
             try:
                 self.set_speaking(True)
             except Exception:
                 pass
             try:
-                pcm = _gemini_tts_pcm(text)
-                if pcm and _play_pcm_audio(pcm):
-                    return
+                with _TTS_PLAY_LOCK:
+                    pcm = _gemini_tts_pcm(text)
+                    if pcm and _play_pcm_audio(pcm):
+                        return
                 # No TTS quota / offline: fall back to the local voice. Never
                 # fall back to a live turn - that is what caused the mess.
                 from actions.attention_monitor import _speak_edge_native
@@ -4686,6 +4805,7 @@ class NIGHTFALLLive:
                     self.set_speaking(False)
                 except Exception:
                     pass
+                self._readout_active = False
 
         threading.Thread(target=_worker, daemon=True, name="nightfall-tts").start()
 
@@ -5693,6 +5813,14 @@ class NIGHTFALLLive:
             if self._phone_active:
                 return
 
+            # Half-duplex while the app reads text out: the microphone would
+            # otherwise pick up the assistant's own voice, the live session
+            # would transcribe it as the user, the model would answer its own
+            # status message, and the read-out would be cut off after a couple
+            # of words as an "interruption".
+            if getattr(self, "_readout_active", False):
+                return
+
             if getattr(self, "_ptt_enabled", False) and not getattr(self, "_ptt_held", False):
                 data = np.zeros_like(indata).tobytes()
                 loop.call_soon_threadsafe(
@@ -5796,10 +5924,21 @@ class NIGHTFALLLive:
                             txt = sc.output_transcription.text.strip()
                             if txt:
                                 out_buf.append(txt)
+                                # The microphone will hear these words too.
+                                self._remember_own_speech(txt)
 
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = sc.input_transcription.text.strip()
-                            if txt:
+                            if txt and self._is_own_speech_echo(txt):
+                                # The mic picked up the assistant's own voice
+                                # (a read-out or the live answer). It is not a
+                                # user turn: do not interrupt the speech, do not
+                                # log it as the user, and do not let the model
+                                # answer it.
+                                print(f"[NIGHTFALL EVO] 🔁 own voice ignored: {txt[:60]}")
+                            elif txt:
+                                # A real interruption from the user: stop the
+                                # app's speech and treat it as input.
                                 try:
                                     from actions.attention_monitor import stop_native_speech
                                     stop_native_speech()
