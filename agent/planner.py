@@ -46,10 +46,16 @@ pdf_document
   auto_open: boolean (optional, default: true)
 
 word_document
-  action: "create" | "convert" (default: create)
-  title: string (required)
-  content: string (required)
+  action: "create" | "create_report" | "convert" (default: create)
+  title: string (required) - clear descriptive document title
+  content: string (optional) - the FINISHED document text; if omitted or too short,
+    NIGHTFALL writes the full document content itself from the title/topic, so a
+    detailed report only needs action + title. NEVER put a description, outline, or
+    summary of the document in content.
+  sections: list of {heading, body, bullets} (optional) - structured report body
   output_path: string (optional)
+  Use word_document for Word/.docx/report/letter requests. Always emit the step -
+  never answer the user with a description of the document instead.
 
 open_app
   app_name: string (required)

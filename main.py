@@ -422,6 +422,44 @@ def _looks_like_website_request(text: str) -> bool:
     return has_web and (has_action or any(w in low for w in ("landing page", "homepage", "portfolio", "website", "web app", "web page")))
 
 
+def _looks_like_document_request(text: str) -> bool:
+    """True when the user wants a Word document written for them.
+
+    Mirrors the presentation/spreadsheet routers: requests to *read*, *open*,
+    *edit* or *convert* an existing file are left to the document tools, and a
+    user who dictates the body themselves is also left alone.
+    """
+    low = (text or "").lower()
+    if not low.strip():
+        return False
+    stripped = re.sub(
+        r"^(please|pls|kindly)\s+|^(?:can|could|would)\s+you\s+|^hey\s+nightfall(?:\s+evo)?\s+",
+        "",
+        low,
+    ).strip()
+    first = stripped.split()[0] if stripped.split() else ""
+    if first in {
+        "open", "read", "summarize", "summarise", "extract", "convert", "edit",
+        "print", "find", "search", "show", "what", "whats", "how", "why", "when",
+        "where", "who", "is", "are", "do", "does", "did", "tell", "list", "check",
+    }:
+        return False
+    doc_keywords = (
+        "word document", "word file", "docx", ".doc", "ms word", "microsoft word",
+        "document", "report", "essay", "assignment", "paper", "write-up", "writeup",
+        "letter", "notes",
+    )
+    action_words = ("write", "create", "make", "generate", "draft", "prepare", "build", "produce")
+    has_keyword = any(keyword in low for keyword in doc_keywords)
+    has_action = any(re.search(rf"\b{re.escape(action)}\b", low) for action in action_words)
+    if not (has_keyword and has_action):
+        return False
+    # The user dictated the body themselves - keep it verbatim.
+    if len(text) > 400 and any(m in low for m in (":", '"', "saying", "text:", "content:", "reads:", "reading")):
+        return False
+    return True
+
+
 def _looks_like_presentation_request(text: str) -> bool:
     low = (text or "").lower()
     ppt_keywords = (
@@ -1578,7 +1616,11 @@ TOOL_DECLARATIONS = [
         "name": "word_document",
         "description": (
             "Creates, edits, reads, summarizes, extracts text from, and opens editable Word documents (.docx). "
-            "Use for Word document requests, letters, reports, headings, bullets, formatting edits, and preserving existing formatting."
+            "Use for Word document requests, letters, reports, headings, bullets, formatting edits, and preserving existing formatting. "
+            "You MUST call this tool for every document request - never reply in chat with an outline or a description of the document. "
+            "For long documents (reports, essays, assignments, papers) you may pass only action and title: "
+            "NIGHTFALL writes the complete document content itself and saves the .docx. "
+            "If you do pass content, it must be the finished document text, never a description of what it would contain."
         ),
         "parameters": {
             "type": "OBJECT",
@@ -2082,6 +2124,9 @@ class NIGHTFALLLive:
         self._pending_attention: dict | None = None
         self._pending_reply_event: dict | None = None
         self._reply_mode = False
+        # Latest thing the user asked for (typed or spoken). Document tools use it
+        # when the model calls them without writing the content itself.
+        self._last_user_utterance = ""
         self._attention_lock = threading.Lock()
         self._attention_monitor = AttentionMonitor(on_event=self._on_external_notification)
         try:
@@ -2395,6 +2440,8 @@ class NIGHTFALLLive:
         images = _image_attachments(attachments)
         if not text and not images:
             return
+        if text:
+            self._last_user_utterance = text
         # Quick Actions (Alt menu) payloads carry untrusted captured text that
         # is DATA ONLY. Answer them with a plain, tool-free reply: no memory
         # extraction, no tools, no task workspace, no other action.
@@ -2682,8 +2729,37 @@ class NIGHTFALLLive:
             threading.Thread(target=_run_spreadsheet, daemon=True).start()
             return
 
+        document_request = _looks_like_document_request(text)
+
+        if document_request:
+            self.speak("Writing your document now...")
+            if hasattr(self.ui, "begin_task_workspace"):
+                self.ui.begin_task_workspace(
+                    text,
+                    ["Understanding the document brief", "Writing the full content",
+                     "Formatting the document", "Saving the Word file"],
+                    source=source or "local"
+                )
+
+            def _run_document():
+                try:
+                    from actions.document_generator import generate_document_from_prompt
+                    res = generate_document_from_prompt(text, player=self.ui, speak=self.speak)
+                    self.ui.write_log(f"[NIGHTFALLOffice] {res}")
+                    if hasattr(self.ui, "update_task_workspace"):
+                        self.ui.update_task_workspace(status="Document Completed", output=res, percent=100)
+                    self.speak("Your document has been created and saved, sir.")
+                except Exception as exc:
+                    self.ui.write_log(f"ERR: Document generation failed: {exc}")
+                    if hasattr(self.ui, "update_task_workspace"):
+                        self.ui.update_task_workspace(status="Generation Failed", output=str(exc), percent=0)
+                    self.speak("There was an issue creating the document, sir. Please check the logs.")
+
+            threading.Thread(target=_run_document, daemon=True, name="document-generator").start()
+            return
+
         website_request = _looks_like_website_request(text)
-        code_request = (not presentation_request and not spreadsheet_request) and _looks_like_code_request(text) and any(w in text.lower() for w in ("app", "website", "web", "program", "script", "project", "game", "calc", "html", "react"))
+        code_request = (not presentation_request and not spreadsheet_request and not document_request) and _looks_like_code_request(text) and any(w in text.lower() for w in ("app", "website", "web", "program", "script", "project", "game", "calc", "html", "react"))
 
         if website_request or code_request:
             self.speak("Working on your project with NIGHTFALL Dev...")
@@ -4681,10 +4757,38 @@ class NIGHTFALLLive:
                     current_file = Path(self.ui.current_file)
                     if current_file.suffix.lower() == ".docx":
                         args["file_path"] = self.ui.current_file
-                r = await loop.run_in_executor(
-                    None,
-                    lambda: word_document(parameters=args, player=self.ui, speak=self.speak)
+                from actions.docx_tools import document_needs_generated_content
+                topic = (
+                    getattr(self, "_last_user_utterance", "")
+                    or args.get("topic")
+                    or args.get("title")
+                    or args.get("subject")
+                    or ""
                 )
+                if document_needs_generated_content(args):
+                    # The model described the document instead of writing it (or sent
+                    # no content at all): generate the full document ourselves.
+                    from actions.document_generator import generate_document_from_prompt
+                    args["topic"] = topic
+                    self.ui.write_log("THINKING: Writing the full document content...")
+                    r = await loop.run_in_executor(
+                        None,
+                        lambda: generate_document_from_prompt(
+                            topic,
+                            player=self.ui,
+                            speak=self.speak,
+                            title=args.get("title"),
+                            subtitle=args.get("subtitle"),
+                            author=args.get("author"),
+                            subject=args.get("subject"),
+                            output_path=args.get("output_path"),
+                        )
+                    )
+                else:
+                    r = await loop.run_in_executor(
+                        None,
+                        lambda: word_document(parameters=args, player=self.ui, speak=self.speak)
+                    )
                 result = r or "Word document handled."
 
             elif name == "pdf_document":
@@ -5234,6 +5338,7 @@ class NIGHTFALLLive:
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
+                                self._last_user_utterance = full_in
                                 self.ui.write_log(f"You: {full_in}")
                             in_buf = []
 

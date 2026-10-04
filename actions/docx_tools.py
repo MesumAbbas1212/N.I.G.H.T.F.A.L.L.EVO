@@ -18,6 +18,9 @@ from pathlib import Path
 PROJECT_NAME = "NIGHTFALL AI - Lite"
 DEFAULT_OUTPUT_DIR = Path.home() / "Downloads"
 
+#: Guards against re-entering content generation from word_document() itself.
+_GENERATING_CONTENT = False
+
 
 def _sanitize_filename(name: str, default: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9._ -]+", "", (name or "").strip())
@@ -357,6 +360,31 @@ def _docx_result_path(source_path: Path | None, action: str, output_path: str | 
     return _resolve_output_path(None, title=title, ext=".docx", fallback_name="NIGHTFALL_AI_Document")
 
 
+def document_needs_generated_content(params: dict) -> bool:
+    """True when a create-request carries no real document content.
+
+    Either the caller sent nothing, or it sent a *description* of the document
+    ("this report will cover ...") instead of the document itself. In both cases
+    the content has to be written before a .docx is produced.
+    """
+    params = params or {}
+    action = str(params.get("action") or "create").lower().strip()
+    if action not in {"", "create", "create_report"}:
+        return False
+    if str(params.get("doc_type") or "").lower().strip() == "letter":
+        return False
+    if params.get("sections") or params.get("paragraphs") or params.get("bullets") or params.get("numbered"):
+        return False
+    body = str(params.get("content") or params.get("body") or "").strip()
+    if not body:
+        return True
+    try:
+        from actions.document_generator import looks_like_description_only
+        return looks_like_description_only(body)
+    except Exception:
+        return False
+
+
 def _load_doc(path: Path):
     Document, _, _, _, _ = _import_docx()
     return Document(path)
@@ -432,6 +460,32 @@ def word_document(parameters: dict, player=None, speak=None) -> str:
     Document, WD_ALIGN_PARAGRAPH, Inches, Pt, RGBColor = _import_docx()
 
     if action in {"append", "add", "edit", "replace_text", "add_heading", "add_bullets", "reformat", "create", "create_letter", "create_report"}:
+        creating = not (source_path and source_path.exists())
+        global _GENERATING_CONTENT
+        if creating and not _GENERATING_CONTENT and document_needs_generated_content(params):
+            # No usable content was supplied: write the document for real instead
+            # of saving a stub or a description of the document.
+            from actions.document_generator import generate_document_from_prompt
+
+            topic = (
+                str(params.get("topic") or params.get("prompt") or "").strip()
+                or str(params.get("title") or params.get("subject") or "").strip()
+                or title
+            )
+            _GENERATING_CONTENT = True
+            try:
+                return generate_document_from_prompt(
+                    topic,
+                    player=player,
+                    speak=speak,
+                    title=title if title != "NIGHTFALL AI Document" else None,
+                    subtitle=params.get("subtitle"),
+                    author=params.get("author"),
+                    subject=params.get("subject"),
+                    output_path=output_path_str,
+                )
+            finally:
+                _GENERATING_CONTENT = False
         if source_path and source_path.exists():
             doc = Document(source_path)
         else:

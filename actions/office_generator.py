@@ -1,4 +1,4 @@
-﻿from core.user_paths import get_user_data_dir
+from core.user_paths import get_user_data_dir
 import json
 import re
 import sys
@@ -22,7 +22,12 @@ API_CONFIG_PATH = get_user_data_dir() / "config" / "api_keys.json"
 
 import concurrent.futures
 
-def _call_gemini_json(prompt: str, system_instruction: str) -> Optional[dict]:
+def _call_gemini_json(
+    prompt: str,
+    system_instruction: str,
+    models: Optional[list] = None,
+    timeout: int = 14,
+) -> Optional[dict]:
     """Generates structured JSON using Gemini with model failover, timeouts, and retries."""
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -33,7 +38,7 @@ def _call_gemini_json(prompt: str, system_instruction: str) -> Optional[dict]:
             from google import genai
             client = genai.Client(api_key=gemini_key)
 
-            models_to_try = [
+            models_to_try = models or [
                 "gemini-3.1-flash-lite",
                 "gemini-3.5-flash-lite",
                 "gemini-2.5-flash-lite",
@@ -57,7 +62,7 @@ def _call_gemini_json(prompt: str, system_instruction: str) -> Optional[dict]:
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(_query_model, model_name)
-                        resp = future.result(timeout=14)
+                        resp = future.result(timeout=timeout)
                     if resp and resp.text:
                         clean = resp.text.strip()
                         return json.loads(clean)
