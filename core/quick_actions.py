@@ -21,6 +21,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -132,6 +133,11 @@ def parse_quick_action_payload(payload: str) -> dict | None:
 
 # ---------------------------------------------------------------------------
 # Tool-free / memory-free completion backends
+#
+# Every provider the user has saved - built-in or custom - is offered as its
+# own backend, so one provider being out of quota, unreachable or misconfigured
+# can never hide the others: clicking Translate tries the next saved provider
+# instead of reporting a quota for a provider the user is not even using.
 # ---------------------------------------------------------------------------
 
 _GEMINI_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest")
@@ -141,13 +147,25 @@ _DEFAULT_LOCAL_MODEL = "qwen2.5:3b"
 #: Provider answers that mean "come back later", not "this failed".
 _QUOTA_MARKERS = (
     "429", "resource_exhausted", "resource exhausted", "quota",
-    "rate limit", "rate_limit", "too many requests",
+    "rate limit", "rate_limit", "rate-limited", "too many requests",
 )
 #: A rate-limited provider is skipped for a while instead of being asked again
 #: on the next button press (a daily cap takes hours to reset, a per-minute cap
 #: does not, so the cooldown is deliberately short).
 _QUOTA_COOLDOWN_SECONDS = 300
 _quota_blocked_until: dict[str, float] = {}
+
+#: Failure wording that means "the server was not there", not "the key is bad".
+_UNREACHABLE_MARKERS = (
+    "connection", "refused", "timed out", "timeout", "not running",
+    "unreachable", "max retries", "getaddrinfo", "ssl",
+)
+#: Failure wording that means "the key was rejected or is missing".
+_AUTH_MARKERS = (
+    "invalid api key", "api key not valid", "api key is missing",
+    "api key configured", "unauthorized", "forbidden", "authentication",
+    "permission denied", "access denied",
+)
 
 
 def _config_dirs() -> list[Path]:
@@ -190,86 +208,185 @@ def _load_config(filename: str) -> dict:
     return {}
 
 
-def _custom_provider_quick_reply(prompt: str) -> str:
-    """Completion on whichever custom provider Jeff routes the request to.
+class _ProviderBackend:
+    """One configured provider, callable as a Quick Action backend.
 
-    Providers are tried in routed order until one answers: a single dead
-    server (a localhost provider that is not running, say) must not make the
-    whole Quick Action fail while five healthy providers sit unused.
+    Providers are offered one by one rather than as a single chained backend:
+    a quota that one provider has used up used to put every other custom
+    provider on cooldown for five minutes, so Translate kept answering "quota
+    used up" while several healthy providers sat unused. Each backend also
+    fails with its own provider's message, so the reply can name what actually
+    went wrong where.
     """
-    from core import jeff_router, provider_registry
 
-    settings = _load_config("app_settings.json")
-    providers = [
-        p for p in provider_registry.configured_providers() if p.get("custom")
-    ]
-    if not providers:
-        raise RuntimeError("no custom provider configured")
+    def __init__(self, provider: dict):
+        self.provider = dict(provider or {})
+        self.provider_id = str(self.provider.get("id") or "")
+        self.label = str(self.provider.get("name") or self.provider_id or "AI provider")
+        #: Unique backend name; also the quota-cooldown key, so providers are
+        #: skipped individually instead of together.
+        self.__name__ = f"provider:{self.provider_id or self.label.lower()}"
 
-    order: list = []
-    try:
-        client = jeff_router.client_from_settings(settings)
-    except Exception:
-        client = None
-    try:
-        decision = jeff_router.route(prompt, client=client, providers=providers)
-        order.append(decision.provider)
-    except Exception as exc:
-        _log(f"routing failed, using provider order: {exc}")
+    def __call__(self, prompt: str) -> str:
+        from core import provider_registry
 
-    reply, provider, errors = provider_registry.chat_failover(
-        [
-            {"role": "system", "content": _QA_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        providers=providers,
-        order=order,
-        temperature=0.3,
-    )
-    if errors:
-        _log(f"providers skipped before {provider.get('name')}: {'; '.join(errors)[:300]}")
-    return (reply or "").strip()
+        reply = provider_registry.chat(
+            self.provider,
+            [
+                {"role": "system", "content": _QA_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+        )
+        text = (reply or "").strip()
+        if not text:
+            raise RuntimeError(f"{self.label} returned an empty reply")
+        return text
 
 
-def _custom_provider_backends() -> list:
-    """A single backend that answers on a Jeff-routed custom provider."""
+def _custom_provider_backends(configured: list | None = None) -> list:
+    """``(backend, provider)`` for every custom provider saved in Settings."""
     try:
         from core import provider_registry
 
-        custom = [p for p in provider_registry.configured_providers() if p.get("custom")]
+        entries = (
+            list(configured)
+            if configured is not None
+            else provider_registry.configured_providers()
+        )
+        custom = [p for p in entries if p.get("custom")]
     except Exception as exc:
         print(f"[QuickActions] custom provider backends unavailable: {exc}")
         return []
-    if not custom:
-        return []
-    return [(_custom_provider_quick_reply, custom[0])]
+    return [(_ProviderBackend(provider), provider) for provider in custom]
+
+
+def _builtin_backend(provider_id: str):
+    """The dedicated backend for a built-in provider id, if it has one."""
+    entry = _BUILTIN_BACKEND_INFO.get(str(provider_id or ""))
+    return entry[0] if entry else None
+
+
+def _backend_name(backend) -> str:
+    """Unique backend name (``""`` never: it is the cooldown key)."""
+    return str(getattr(backend, "__name__", "") or type(backend).__name__)
+
+
+def _backend_label(backend) -> str:
+    """Human-readable provider name for failure messages."""
+    label = str(getattr(backend, "label", "") or "")
+    if label:
+        return label
+    name = _backend_name(backend)
+    return _BACKEND_INFO_BY_NAME.get(name, ("", name))[1]
+
+
+def _backend_provider_id(backend) -> str:
+    return str(
+        getattr(backend, "provider_id", "")
+        or _BACKEND_INFO_BY_NAME.get(_backend_name(backend), ("", ""))[0]
+    )
+
+
+def _default_provider_order(provider: str) -> tuple:
+    """Built-in ids in the order the user's default provider implies."""
+    if str(provider or "").strip().lower() == "openrouter":
+        return ("openrouter", "gemini", "local")
+    return ("gemini", "openrouter", "local")
 
 
 def _provider_backends() -> list:
-    """Ordered list of tool-free completion backends for the current setup."""
+    """Ordered list of tool-free completion backends for the current setup.
+
+    Everything the user has saved is offered, one backend per provider, so the
+    Settings screen and the Quick Action chain agree. The classic Gemini /
+    OpenRouter / local backends are added once more as a safety net, which
+    keeps the failure message specific ("no Gemini API key configured") even
+    when nothing at all is configured.
+    """
     settings = _load_config("app_settings.json")
     provider = str(settings.get("default_ai_provider", "Gemini") or "Gemini")
     offline = bool(settings.get("offline_mode_enabled", False))
     if offline or provider == "Local":
         # Air-gapped / local mode: never leave the machine.
         return [_local_quick_reply]
-    backends: list = []
-    # Custom providers first (Jeff orders them when routing is enabled).
-    for backend, _provider in _custom_provider_backends():
-        backends.append(backend)
-    if provider == "OpenRouter":
-        backends.extend([_openrouter_quick_reply, _gemini_quick_reply, _local_quick_reply])
-    else:
-        backends.extend([_gemini_quick_reply, _openrouter_quick_reply, _local_quick_reply])
-    # De-duplicate while preserving order.
+
+    try:
+        from core import provider_registry
+
+        configured = provider_registry.configured_providers()
+    except Exception as exc:
+        print(f"[QuickActions] provider registry unavailable: {exc}")
+        configured = []
+
+    # Custom providers first (Jeff re-orders them when routing is enabled).
+    backends: list = [backend for backend, _provider in _custom_provider_backends(configured)]
+
+    # Built-ins the user has configured, the default provider's choice first.
+    by_id = {str(entry.get("id") or ""): entry for entry in configured}
+    used: set = set()
+    for provider_id in list(_default_provider_order(provider)) + list(by_id):
+        if not provider_id or provider_id in used:
+            continue
+        entry = by_id.get(provider_id)
+        if entry is None or entry.get("custom"):
+            continue  # custom providers are already offered above
+        used.add(provider_id)
+        backends.append(_builtin_backend(provider_id) or _ProviderBackend(entry))
+
+    # Safety net: the classic trio, so a keyless setup still reports a specific
+    # reason ("no Gemini API key configured") instead of a bare "no backend".
+    for provider_id in _default_provider_order(provider):
+        backends.append(_builtin_backend(provider_id))
+
+    # De-duplicate while preserving order: the same provider must not be asked
+    # twice in one click.
     seen: set = set()
     ordered: list = []
     for backend in backends:
-        if backend in seen:
+        name = _backend_name(backend)
+        if name in seen:
             continue
-        seen.add(backend)
+        seen.add(name)
         ordered.append(backend)
     return ordered
+
+
+def _preferred_provider_id(prompt: str) -> str:
+    """The custom provider Jeff would route *prompt* to (``""`` when unknown)."""
+    try:
+        from core import jeff_router, provider_registry
+
+        providers = [
+            p for p in provider_registry.configured_providers() if p.get("custom")
+        ]
+        if len(providers) < 2:
+            return ""
+        settings = _load_config("app_settings.json")
+        client = jeff_router.client_from_settings(settings)
+        return jeff_router.route(prompt, client=client, providers=providers).provider_id
+    except Exception as exc:
+        _log(f"routing failed, using provider order: {exc}")
+        return ""
+
+
+def _ordered_backends(prompt: str) -> list:
+    """Backends to try in order, with the custom provider Jeff prefers first.
+
+    Only the user's own providers are re-ordered: the built-in Gemini /
+    OpenRouter / local backends keep their configured order so the saved
+    providers are not pushed behind the default provider.
+    """
+    backends = list(_provider_backends())
+    if not any(getattr(backend, "provider_id", "") for backend in backends):
+        return backends  # a caller supplied its own backends; keep their order
+    preferred = _preferred_provider_id(prompt)
+    if not preferred:
+        return backends
+    return sorted(
+        backends,
+        key=lambda backend: 1 if _backend_provider_id(backend) != preferred else 0,
+    )
 
 
 def _gemini_quick_reply(prompt: str) -> str:
@@ -340,6 +457,21 @@ def _local_quick_reply(prompt: str) -> str:
     return text
 
 
+#: Built-in providers with a dedicated backend (Gemini keeps its model
+#: fallback, OpenRouter its free-model pool, local its server awareness).
+_BUILTIN_BACKEND_INFO: dict = {
+    "gemini": (_gemini_quick_reply, "Google Gemini"),
+    "openrouter": (_openrouter_quick_reply, "OpenRouter"),
+    "local": (_local_quick_reply, "Local AI (Ollama / LM Studio)"),
+}
+#: The same information keyed by backend function name, for the plain
+#: functions that are not wrapped in a :class:`_ProviderBackend`.
+_BACKEND_INFO_BY_NAME: dict = {
+    fn.__name__: (provider_id, label)
+    for provider_id, (fn, label) in _BUILTIN_BACKEND_INFO.items()
+}
+
+
 class QuickActionError(RuntimeError):
     """A Quick Action failed - the message is already user-facing."""
 
@@ -358,39 +490,112 @@ def _remember_quota_error(name: str) -> None:
     _quota_blocked_until[name] = time.time() + _QUOTA_COOLDOWN_SECONDS
 
 
+def _failure_kind(reason: str) -> str:
+    """Classify one provider failure: ``quota`` / ``unreachable`` / ``auth`` / ``other``."""
+    text = str(reason or "")
+    low = text.lower()
+    if is_quota_error(text):
+        return "quota"
+    if any(marker in low for marker in _UNREACHABLE_MARKERS):
+        return "unreachable"
+    if any(marker in low for marker in _AUTH_MARKERS):
+        return "auth"
+    return "other"
+
+
+#: Short, actionable wording for the failure kinds the user can fix in Settings.
+_KIND_LABELS = {
+    "quota": "out of quota",
+    "unreachable": "not reachable",
+    "auth": "key rejected",
+}
+
+
+def _split_failures(joined: str) -> list[tuple[str, str]]:
+    """Split ``"<provider>: <reason>; <provider>: <reason>"`` into pairs."""
+    failures: list[tuple[str, str]] = []
+    for chunk in str(joined or "").split("; "):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        label, sep, reason = chunk.partition(": ")
+        failures.append((label.strip(), reason.strip()) if sep else ("", chunk))
+    return failures
+
+
+def _as_failures(err) -> list[tuple[str, str]]:
+    """Accept either a ``[(provider, reason), ...]`` list or the joined text."""
+    if isinstance(err, (list, tuple)):
+        pairs: list[tuple[str, str]] = []
+        for item in err:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                pairs.append((str(item[0]), str(item[1])))
+            else:
+                pairs.append(("", str(item)))
+        return pairs
+    return _split_failures(err)
+
+
+def _short_reason(kind: str, reason: str) -> str:
+    """A few words the user can act on - never a provider payload."""
+    if kind in _KIND_LABELS:
+        return _KIND_LABELS[kind]
+    text = re.sub(r"https?://\S+", "", str(reason or "")).strip()
+    text = re.sub(r"\s+", " ", text)
+    return (text[:60].rstrip() + "...") if len(text) > 60 else (text or "failed")
+
+
+def _named_failure_message(action: str, failures: list[tuple[str, str]]) -> str:
+    """Name what happened for each provider - used when the causes are mixed."""
+    parts: list[str] = []
+    for label, reason in failures[:4]:
+        short = _short_reason(_failure_kind(reason), reason)
+        parts.append(f"{label} ({short})" if label else short)
+    extra = len(failures) - len(parts)
+    if extra > 0:
+        parts.append(f"and {extra} more")
+    return (
+        f"Sir, no AI provider could {action} that: " + "; ".join(parts) +
+        ". Add or test one in Settings, Custom AI Providers."
+    )
+
+
 def friendly_quick_action_error(action: str, err) -> str:
-    """One spoken sentence instead of a raw provider traceback.
+    """One short, actionable sentence that names the real problem.
 
     The whole Gemini 429 payload - URLs, quota ids and all - used to be shown
-    as the chat reply. Failures are reported in one short, actionable line
-    that names the real problem; the raw text goes to the QA log.
+    as the chat reply, and once any provider answered 429 every other failure
+    was reported as a quota problem even when the other saved providers were
+    simply unreachable or their key had been rejected. The sentence now
+    reflects what happened to each provider; the raw text goes to the QA log.
     """
-    text = str(err or "")
-    low = text.lower()
-    # "the provider is rate limited" and "your local server is not running"
-    # are different problems: only claim a quota when a quota answer exists,
-    # and prefer the connectivity explanation when a server was unreachable.
-    quota = is_quota_error(text)
-    unreachable = any(marker in low for marker in (
-        "connection", "refused", "timed out", "timeout", "not running",
-        "unreachable", "max retries", "getaddrinfo", "ssl",
-    ))
-    if unreachable and not quota:
-        return (
-            f"Sir, none of your AI providers answered, so I could not {action} that. "
-            "If you added a local provider, start its server (Ollama, LM Studio, ...); "
-            "otherwise press Test next to each provider in Settings, Custom AI Providers."
-        )
-    if quota:
+    failures = _as_failures(err)
+    if not failures:
+        failures = [("", str(err) or "no AI backend available")]
+    kinds = [_failure_kind(reason) for _label, reason in failures]
+    quota = kinds.count("quota")
+    unreachable = kinds.count("unreachable")
+    auth = kinds.count("auth")
+    other = len(kinds) - quota - unreachable - auth
+
+    if quota and not (unreachable or auth or other):
         return (
             f"Sir, my AI provider's quota is used up, so I could not {action} that. "
             "Add another key in Settings, Custom AI Providers - Groq or OpenRouter "
             "work well - and I will use it instead."
         )
-    return (
-        f"Sir, I could not reach any AI provider to {action} that. "
-        "Please check the API keys in Settings."
-    )
+    if unreachable and not (quota or auth or other):
+        return (
+            f"Sir, none of your AI providers answered, so I could not {action} that. "
+            "If you added a local provider, start its server (Ollama, LM Studio, ...); "
+            "otherwise press Test next to each provider in Settings, Custom AI Providers."
+        )
+    if auth and not (quota or unreachable or other):
+        return (
+            f"Sir, I could not reach any AI provider to {action} that. "
+            "Please check the API keys in Settings."
+        )
+    return _named_failure_message(action, failures)
 
 
 def quick_action_reply(action: str, text: str) -> str:
@@ -399,30 +604,34 @@ def quick_action_reply(action: str, text: str) -> str:
     The captured text is passed as data only (see ``build_quick_action_payload``)
     and the call never carries tool declarations, so the model physically
     cannot save memory or run any other action for this request.
+
+    Every configured provider is its own backend, so a provider that is out of
+    quota is skipped on its own while the user's other providers are still
+    tried.
     """
     prompt = build_quick_action_payload(action, text)
-    errors: list[str] = []
-    quota = False
-    for backend in _provider_backends():
-        name = getattr(backend, "__name__", "backend")
+    failures: list[tuple[str, str]] = []
+    for backend in _ordered_backends(prompt):
+        name = _backend_name(backend)
         if _quota_blocked(name):
-            errors.append(f"{name}: skipped (rate limited)")
-            quota = True
+            failures.append((_backend_label(backend), "skipped (out of quota)"))
             continue
         try:
             reply = backend(prompt)
         except Exception as exc:
             if is_quota_error(exc):
-                quota = True
                 _remember_quota_error(name)
-            errors.append(f"{name}: {exc}")
+            failures.append((_backend_label(backend), str(exc)))
             _log(f"quick action backend failed: {name}: {str(exc)[:400]}")
             continue
         if reply and reply.strip():
+            _log(f"quick action ({action}) answered by {name}")
             return reply.strip()
-    joined = "; ".join(errors) or "no AI backend available"
+    joined = "; ".join(
+        f"{label}: {reason}" if label else reason for label, reason in failures
+    ) or "no AI backend available"
     _log(f"quick action ({action}) failed for every provider: {joined[:600]}")
-    raise QuickActionError(friendly_quick_action_error(action, joined))
+    raise QuickActionError(friendly_quick_action_error(action, failures))
 
 
 class _HotkeyBridge(QObject):

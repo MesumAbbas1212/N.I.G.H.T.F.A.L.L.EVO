@@ -150,7 +150,8 @@
 - Free tiers are small — Google's free Gemini plan allows only ~20 requests per day *per model*, which a couple of
   documents or Quick Actions can use up. When that happens NIGHTFALL Evo says so in one short sentence instead of
   pasting the provider's error, stops asking the exhausted provider, and finishes the job with another provider if
-  you have one.
+  you have one. Every provider saved in *Settings → Custom AI Providers* is tried in turn, so a single rate-limited
+  key can never take the other providers down with it, and the sentence names each provider that failed and why.
 - Adding a second key (Groq, OpenRouter and Cerebras all have free tiers) in *Settings → Custom AI Providers* is the
   recommended fix; documents then fall back to it automatically. A local Ollama/LM Studio model is used too, if one
   is running, so a document can still be written with no cloud key at all.

@@ -580,6 +580,121 @@ def test_non_quota_failure_is_also_reported_plainly(monkeypatch):
     assert "check the API keys" in str(info.value)
 
 
+def test_one_quota_failure_does_not_hide_another_provider_problem(monkeypatch):
+    """A single 429 used to make every failure read as an exhausted quota.
+
+    The user was told "quota used up" while their other saved providers had
+    simply been unreachable, which is a different problem with a different fix.
+    """
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+
+    def exhausted(prompt):
+        raise RuntimeError(GEMINI_429)
+
+    def dead(prompt):
+        raise RuntimeError("HTTPSConnectionPool: Max retries exceeded (Connection refused)")
+
+    monkeypatch.setattr(qa, "_provider_backends", lambda: [exhausted, dead])
+
+    with pytest.raises(qa.QuickActionError) as info:
+        qa.quick_action_reply("translate", "hola")
+
+    message = str(info.value)
+    assert "quota" in message.lower()
+    assert "not reachable" in message.lower(), message
+    assert "https://" not in message
+
+
+# -- every saved provider is used --------------------------------------------
+# The bug behind "I reached my provider's limit, even though I have multiple
+# providers saved": the custom providers were chained into ONE backend, so a
+# quota on any of them put all of them on cooldown for five minutes.
+
+
+@pytest.fixture()
+def quick_action_settings(monkeypatch):
+    """Deterministic app settings, whatever the developer's own config says."""
+
+    def fake_load(filename):
+        if filename == "app_settings.json":
+            return {"default_ai_provider": "Gemini", "offline_mode_enabled": False}
+        return {}
+
+    monkeypatch.setattr(qa, "_load_config", fake_load)
+
+
+def _provider(name, provider_id, key="k", custom=True, kind="openai"):
+    return {
+        "id": provider_id, "name": name, "kind": kind,
+        "base_url": f"https://api.{provider_id}.example/v1",
+        "api_key": key, "model": "some-model", "caps": ["chat"],
+        "custom": custom, "enabled": True,
+    }
+
+
+def test_custom_providers_are_offered_one_by_one(quick_action_settings, monkeypatch):
+    from core import provider_registry as reg
+
+    providers = [_provider("Groq", "groq"), _provider("Together AI", "together-ai")]
+    monkeypatch.setattr(reg, "configured_providers", lambda: providers)
+
+    backends = qa._custom_provider_backends()
+
+    assert [qa._backend_name(backend) for backend, _p in backends] == [
+        "provider:groq", "provider:together-ai",
+    ]
+    assert [qa._backend_label(backend) for backend, _p in backends] == [
+        "Groq", "Together AI",
+    ]
+
+
+def test_every_configured_provider_is_offered_to_quick_actions(quick_action_settings, monkeypatch):
+    from core import provider_registry as reg
+
+    providers = [
+        _provider("Groq", "groq"),
+        _provider("Agnes AI", "agnes-ai"),
+        _provider("Anthropic", "anthropic", custom=False, kind="anthropic"),
+    ]
+    monkeypatch.setattr(reg, "configured_providers", lambda: providers)
+
+    labels = [qa._backend_label(backend) for backend in qa._provider_backends()]
+
+    # saved providers first, then the default providers, then the safety net
+    assert labels[:3] == ["Groq", "Agnes AI", "Anthropic"], labels
+    assert "Google Gemini" in labels
+
+
+def test_a_provider_that_is_out_of_quota_does_not_block_the_others(
+    quick_action_settings, monkeypatch
+):
+    """Forced regression test for the reported "provider's limit" bug."""
+    from core import provider_registry as reg
+
+    providers = [_provider("Groq", "groq"), _provider("Together AI", "together-ai")]
+    monkeypatch.setattr(reg, "configured_providers", lambda: providers)
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+    monkeypatch.setattr(qa, "_preferred_provider_id", lambda prompt: "")
+
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append(provider["id"])
+        if provider["id"] == "groq":
+            raise RuntimeError(GEMINI_429)
+        return "translated text"
+
+    monkeypatch.setattr(reg, "chat", fake_chat)
+
+    assert qa.quick_action_reply("translate", "hola") == "translated text"
+    assert calls == ["groq", "together-ai"], calls
+
+    # The next press skips only Groq; Together AI is still asked and answers.
+    calls.clear()
+    assert qa.quick_action_reply("summarize", "hola") == "translated text"
+    assert calls == ["together-ai"], calls
+
+
 def test_the_worker_posts_the_short_message(monkeypatch):
     """What reaches the chat must be the sentence, not the provider payload."""
     monkeypatch.setattr(qa, "_quota_blocked_until", {})

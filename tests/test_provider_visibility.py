@@ -53,7 +53,7 @@ def store_providers(store):
     return registry.configured_providers
 
 
-def _settings_provider(name="Agnes AI", base_url="https://api.agnes-ai.com/v1"):
+def _settings_provider(name="Agnes AI", base_url="https://api.agnes-ai.com/v1", priority=50):
     """Exactly what the Settings dialog saves."""
     return registry.save_custom_provider({
         "name": name,
@@ -62,6 +62,7 @@ def _settings_provider(name="Agnes AI", base_url="https://api.agnes-ai.com/v1"):
         "api_key": "sk-agnes-123",
         "model": "agnes-2.0-flashfree",
         "caps": ["chat", "vision", "coding"],
+        "priority": priority,
         "enabled": True,
     })
 
@@ -171,9 +172,11 @@ def test_quick_actions_can_use_a_settings_provider(store):
     from core import quick_actions as qa
 
     _settings_provider()
-    # the routed custom-provider backend is offered first, ahead of Gemini
-    assert qa._provider_backends()[0].__name__ == "_custom_provider_quick_reply"
-    assert qa._custom_provider_backends()[0][1]["name"] == "Agnes AI"
+    # every saved provider is its own backend, offered ahead of the built-ins
+    backends = qa._provider_backends()
+    assert getattr(backends[0], "__name__", "") == "provider:agnes-ai"
+    assert qa._backend_label(backends[0]) == "Agnes AI"
+    assert [p["name"] for _backend, p in qa._custom_provider_backends()] == ["Agnes AI"]
 
 
 def test_routing_prefers_a_configured_custom_provider(store):
@@ -292,23 +295,37 @@ def test_unreachable_providers_get_a_connectivity_message():
     assert "answered" in message.lower() or "start" in message.lower()
 
 
-def test_quick_action_uses_failover_across_providers(monkeypatch):
+def test_quick_action_uses_failover_across_providers(store, monkeypatch):
+    """A quota on one saved provider must not hide the other saved providers.
+
+    Every provider is its own backend (with its own quota cooldown), so the
+    next healthy provider still answers - this is the bug where Translate
+    reported "quota used up" while several providers sat unused.
+    """
     from core import quick_actions as qa
+    from core import provider_registry as reg
+
+    _settings_provider("Agnes AI", "https://api.agnes-ai.com/v1", priority=10)
+    _settings_provider("AINative Studio", "https://api.ainative.studio/api/v1", priority=20)
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+    # Keep the registry order for the assertion (Jeff may prefer either one).
+    monkeypatch.setattr(qa, "_preferred_provider_id", lambda prompt: "")
 
     calls = []
 
-    def fake_failover(messages, providers=None, order=None, **kwargs):
-        calls.append([p["id"] for p in (providers or [])])
-        return "translated", (providers or [{}])[0], ["first: connection refused"]
+    def fake_chat(provider, messages, **kwargs):
+        calls.append(provider["id"])
+        if provider["id"] == "agnes-ai":
+            raise RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded")
+        return "translated"
 
-    import core.provider_registry as reg
+    monkeypatch.setattr(reg, "chat", fake_chat)
 
-    monkeypatch.setattr(reg, "chat_failover", fake_failover)
-    monkeypatch.setattr(reg, "configured_providers", lambda: [{
-        "id": "agnes-ai", "name": "Agnes AI", "kind": "openai",
-        "base_url": "https://api.agnes-ai.com/v1", "api_key": "k",
-        "model": "agnes-2.0-flashfree", "caps": ["chat"], "custom": True,
-    }])
+    assert qa.quick_action_reply("translate", "hola") == "translated"
+    assert set(calls) == {"agnes-ai", "ainative-studio"}, calls
+    assert any(key.startswith("provider:agnes-ai") for key in qa._quota_blocked_until)
 
-    assert qa._custom_provider_quick_reply("translate this") == "translated"
-    assert calls and calls[0] == ["agnes-ai"]
+    # The next press skips only the rate-limited provider, never the group.
+    calls.clear()
+    assert qa.quick_action_reply("summarize", "hola") == "translated"
+    assert calls == ["ainative-studio"], calls
