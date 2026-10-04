@@ -17,6 +17,7 @@ The fix: app text is synthesized with the TTS model in Zephyr's voice and
 played locally. Same voice, no turn, no tools, no memory.
 """
 
+import asyncio
 import importlib
 import threading
 import time
@@ -38,6 +39,20 @@ def _isolated_tts_cache(tmp_path, monkeypatch, main_module=None):
     (tmp_path / "tts").mkdir(exist_ok=True)
 
 
+class LiveSession:
+    """The live session, with a real event loop behind it."""
+
+    def __init__(self):
+        self.client_content = []
+        self.tool_responses = []
+
+    async def send_client_content(self, turns, turn_complete=False):
+        self.client_content.append(turns)
+
+    async def send_tool_response(self, function_responses):
+        self.tool_responses.append(function_responses)
+
+
 class FakeSession:
     """Records every way the app could talk to the live session."""
 
@@ -52,13 +67,34 @@ class FakeSession:
         self.client_content.append(turns)
 
 
-def _assistant(main, session=None):
+@pytest.fixture()
+def live_loop():
+    """An event loop the app can schedule coroutines on, as in production."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    yield loop
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=2)
+
+
+def _assistant(main, session=None, live=True, loop=None):
+    """A partially built assistant.
+
+    ``live=True`` (default) means the unified voice session is connected, so
+    read-outs go through it; ``live=False`` means offline/local mode, where the
+    TTS path is used.
+    """
+    if not live:
+        session = None
     assistant = object.__new__(main.NIGHTFALLLive)
     ui = types.SimpleNamespace(muted=False, states=[],
                                set_state=lambda state: ui.states.append(state))
     assistant.ui = ui
-    assistant.session = session if session is not None else FakeSession()
-    assistant._loop = object()
+    assistant.session = session if session is not None else (None if not live else FakeSession())
+    assistant._loop = (loop or object()) if live else None
+    assistant._readout_lock = threading.Lock()
+    assistant._readout_deadline = 0.0
     assistant._speaking_lock = threading.Lock()
     assistant._is_speaking = False
     assistant._readout_active = False
@@ -80,10 +116,9 @@ def _wait_for(predicate, timeout=5.0):
 
 # -- the regression ----------------------------------------------------------
 
-def test_speaking_app_text_does_not_create_a_conversation_turn(monkeypatch, main_module):
+def test_without_a_live_session_the_local_voice_is_used(monkeypatch, main_module):
     main = main_module
-    session = FakeSession()
-    assistant = _assistant(main, session)
+    assistant = _assistant(main, live=False)
 
     spoken = []
     monkeypatch.setattr(
@@ -95,8 +130,8 @@ def test_speaking_app_text_does_not_create_a_conversation_turn(monkeypatch, main
     assistant.speak("Quick Action answer: my name is sydro")
 
     assert _wait_for(lambda: spoken), "the text was never read out"
-    assert session.sent == [], "app text must never be sent as a live turn"
-    assert session.client_content == []
+    # With no live session there is nothing to send the read-out to.
+    assert assistant.session is None, assistant.session
 
 
 def test_the_read_out_is_never_fed_to_memory_or_tools(monkeypatch, main_module):
@@ -104,10 +139,15 @@ def test_the_read_out_is_never_fed_to_memory_or_tools(monkeypatch, main_module):
     import inspect
 
     speak_code = inspect.getsource(main_module.NIGHTFALLLive.speak)
-    read_out_code = inspect.getsource(main_module.NIGHTFALLLive._speak_verbatim)
-    for source in (speak_code, read_out_code):
-        assert "send_client_content" not in source
-        assert "session.send" not in source
+    live_code = inspect.getsource(main_module.NIGHTFALLLive._speak_via_live)
+    local_code = inspect.getsource(main_module.NIGHTFALLLive._speak_verbatim)
+    # the local synthesis path never touches the session at all
+    assert "send_client_content" not in local_code
+    assert "session" not in local_code
+    # the live path is fenced: it is labelled as a read-out and never a user turn
+    assert "APP READ-OUT" in live_code
+    assert "not call any tool" in live_code
+    assert "save anything to memory" in live_code
     assert "_speak_verbatim" in speak_code
 
 
@@ -178,7 +218,7 @@ def test_a_dead_tts_quota_is_not_retried_for_every_message(monkeypatch, main_mod
 
 def test_missing_tts_quota_falls_back_to_the_local_voice(monkeypatch, main_module):
     main = main_module
-    assistant = _assistant(main)
+    assistant = _assistant(main, live=False)
 
     spoken = []
     monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": None)
@@ -194,7 +234,7 @@ def test_missing_tts_quota_falls_back_to_the_local_voice(monkeypatch, main_modul
 
 def test_successful_tts_is_played_without_the_local_voice(monkeypatch, main_module):
     main = main_module
-    assistant = _assistant(main)
+    assistant = _assistant(main, live=False)
 
     played = []
     spoken = []
@@ -479,25 +519,50 @@ def test_short_text_stays_one_chunk():
     assert _split_for_tts("Your document is ready, sir.") == ["Your document is ready, sir."]
 
 
-def test_the_read_out_waits_for_the_live_voice(monkeypatch, main_module):
+def test_a_read_out_is_spoken_by_the_live_voice_itself(monkeypatch, main_module, live_loop):
+    """The only way to sound exactly like the conversation."""
+    main = main_module
+    session = LiveSession()
+    assistant = _assistant(main, session, live=True, loop=live_loop)
+
+    def never(text, voice="Zephyr"):
+        raise AssertionError("the TTS model must not be used while live is available")
+
+    monkeypatch.setattr(main, "_gemini_tts_pcm", never)
+
+    assistant.speak("Your document is ready, sir.")
+    assert _wait_for(lambda: session.client_content), "nothing was sent to the session"
+
+    prompt = session.client_content[0]["parts"][0]["text"]
+    assert "APP READ-OUT" in prompt
+    assert "Your document is ready, sir." in prompt
+    assert "do not" in prompt
+    assert assistant._readout_active is True
+    assistant._end_readout()
+
+
+def test_the_read_out_waits_for_the_live_voice(monkeypatch, main_module, live_loop):
     """Two voices at once through one device is what garbles the audio."""
     main = main_module
-    assistant = _assistant(main)
+    session = LiveSession()
+    assistant = _assistant(main, session, live=True, loop=live_loop)
     assistant._is_speaking = True
 
-    played = []
-    monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": b"pcm")
-    monkeypatch.setattr(main, "_play_pcm_audio", lambda pcm, rate=24000: played.append(pcm) or True)
+    spoken = threading.Event()
+    threading.Thread(
+        target=lambda: (assistant.speak("status"), spoken.set()),
+        daemon=True, name="readout-under-test",
+    ).start()
 
-    assistant.speak("status")
+    # While the assistant is speaking, the read-out waits instead of talking
+    # over it (two streams through one device garble each other).
+    time.sleep(0.4)
+    assert session.client_content == [], "the read-out must wait for a gap"
 
-    def release():
-        time.sleep(0.2)
-        assistant._is_speaking = False
-
-    threading.Thread(target=release, daemon=True).start()
-    assert _wait_for(lambda: played, timeout=5), "the read-out never played"
-    assert assistant._readout_active is False
+    assistant._is_speaking = False
+    assert _wait_for(lambda: session.client_content, timeout=5), "the read-out never played"
+    spoken.wait(2)
+    assistant._end_readout()
 
 
 def test_barge_in_is_off_by_default(main_module):
@@ -528,7 +593,7 @@ def test_the_fallback_voice_matches_zephyrs_character():
 
 def test_the_engine_used_is_logged(monkeypatch, main_module, capsys):
     main = main_module
-    assistant = _assistant(main)
+    assistant = _assistant(main, live=False)
     monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": b"pcm")
     monkeypatch.setattr(main, "_play_pcm_audio", lambda pcm, rate=24000: True)
 

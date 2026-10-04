@@ -124,20 +124,19 @@
   is no such news, and results carry their source and publication date.
 
 ### 🔊 One voice: Zephyr
-- App text (status updates, Quick Action answers, notifications) is read out by synthesizing it directly in
-  Zephyr's voice and playing it locally - it is no longer injected into the live session as a turn. That relay
-  used to make the assistant answer its own status messages ("Acknowledged…") and even run tools on them.
-- Speech is cached per phrase, so repeating status lines ("Working on web search…") cost nothing after the first
-  time and Zephyr's voice keeps working even when the speech quota is tight; long answers are split into
-  sentence-sized requests. Every read-out logs which voice was used (`[Voice] Zephyr (model): "…"`).
-- A read-out never talks over the live session: it waits for a gap first, so two voices cannot garble each other.
+- Everything the app says is spoken by the **live session itself** - the same voice as the conversation. A
+  read-out is sent as a labelled *"APP READ-OUT"* message ("read this aloud, exactly as written, no commentary,
+  no tools, no memory") and the session's answer to it is discarded: no chat bubble, no memory, no tool calls,
+  and it can never interrupt a task. Tool progress ("Executing web_search") is shown on screen instead of being
+  narrated, since a spoken line per tool call was the loudest user of the speech engine.
+- With no live session (offline/local mode) the text is synthesized with the Zephyr TTS voice and played locally,
+  with a bright female neural voice as the last resort. Read-outs are cached per phrase, so repeated status lines
+  cost nothing, and every read-out logs the engine it used (`[Voice] Zephyr (live session): "…"`).
+- A read-out never talks over the assistant: it waits for a gap first, so two streams cannot garble each other.
 - The microphone is kept away from the session while the assistant speaks, and any echo that still reaches the
-  transcriber is recognised as the assistant's own voice. Voice barge-in (interrupting by speaking) is now an
-  opt-in setting, `voice_barge_in_enabled`, because that echo used to be classified as an interruption and cut
-  answers off after a few words. Use the mute/mic control or type to interrupt instead.
-- TTS audio is resampled to the output device's own rate (PortAudio does not resample) so Zephyr's voice works on
-  44.1/48 kHz-only sound cards; if speech generation is unavailable, a bright female neural fallback voice is used
-  (never the old male one), and a failed speech quota is not retried for every message.
+  transcriber is recognised as the assistant's own voice. Voice barge-in (interrupting by speaking) is an opt-in
+  setting, `voice_barge_in_enabled`, because that echo used to be classified as an interruption and cut answers
+  off after a few words. Use the mute/mic control or type to interrupt instead.
 
 ### 🪶 Resource use
 - Heavy stacks stay out of the boot path: OpenCV, mss, PortAudio and numpy are imported only when screen or
