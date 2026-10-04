@@ -2626,6 +2626,16 @@ class TaskCard(QFrame):
         self.hide()
 
 
+def _is_image_file(path) -> bool:
+    try:
+        from core.image_blob import is_image_path
+        return is_image_path(path)
+    except Exception:
+        return str(path or "").lower().endswith(
+            (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
+        )
+
+
 def _fmt_time_stamp(value: int | float | None = None) -> str:
     try:
         from datetime import datetime
@@ -2910,10 +2920,45 @@ class ChatBubble(QFrame):
             for attachment in attachments:
                 title = str(attachment.get("name") or attachment.get("title") or attachment.get("path") or "Attachment")
                 subtitle = str(attachment.get("path") or attachment.get("description") or "")
-                outer.addWidget(ArtifactCard(title, file_type=Path(title).suffix.lstrip(".").upper() or "File", status="Attached", path=subtitle or title))
+                if subtitle and _is_image_file(subtitle) and Path(subtitle).is_file():
+                    outer.addWidget(self._build_image_attachment(subtitle, title))
+                else:
+                    outer.addWidget(ArtifactCard(title, file_type=Path(title).suffix.lstrip(".").upper() or "File", status="Attached", path=subtitle or title))
 
         if animate and role == "assistant":
             self._start_typing_animation()
+
+    def _build_image_attachment(self, path: str, title: str = "") -> QLabel:
+        """Render an attached image (e.g. a snip) as a clickable thumbnail."""
+        lbl = QLabel()
+        lbl.setObjectName("ChatImageAttachment")
+        lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+        lbl.setToolTip(f"{title or Path(path).name}\nClick to open")
+        lbl.setStyleSheet(
+            "QLabel#ChatImageAttachment { background: rgba(0,0,0,0.25); border: 1px solid rgba(0, 229, 255, 0.45);"
+            " border-radius: 12px; padding: 3px; }"
+        )
+        pix = QPixmap(path)
+        if pix is not None and not pix.isNull():
+            scaled = pix.scaled(
+                280, 220,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            lbl.setPixmap(scaled)
+            lbl.setFixedSize(scaled.width() + 8, scaled.height() + 8)
+        else:
+            lbl.setText(f"🖼 {title or Path(path).name}")
+        lbl._image_path = str(path)
+
+        def _open(_ev, _p=str(path)):
+            try:
+                os.startfile(_p)  # noqa: SLF001
+            except Exception:
+                pass
+
+        lbl.mousePressEvent = _open
+        return lbl
 
     def _render_text(self, text: str, final: bool = True):
         self._browser.setText(_markdown_to_html(text or "", self._role))
@@ -3087,7 +3132,7 @@ class ConversationFeed(QScrollArea):
         while root is not None and not hasattr(root, "command_submitted"):
             root = root.parentWidget()
         if root is not None and hasattr(root, "command_submitted"):
-            root.command_submitted.emit(text)
+            root.command_submitted.emit(text, [])
 
     def clear_messages(self):
         while self._layout.count():
@@ -3307,8 +3352,97 @@ class TaskDock(QFrame):
         self._task_card.clear_workspace()
 
 
-class WorkspaceSidebar(QWidget):
-    command_submitted = pyqtSignal(str)
+class _ChatAttachmentsMixin:
+    """Pending file/image attachments for a chat input (e.g. a snip).
+
+    Attachments stay pending until the next message is sent, so the user can
+    capture a screenshot with Alt -> Screen and then type a question about it
+    from whichever chat pane is visible.
+    """
+
+    def _init_chat_attachments(self) -> None:
+        self._pending_attachments: list[dict] = []
+
+    def _new_attachment_bar(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("ChatAttachmentBar")
+        bar.setStyleSheet(
+            "QFrame#ChatAttachmentBar { background: rgba(0, 229, 255, 0.06);"
+            " border: 1px solid rgba(0, 229, 255, 0.28); border-radius: 10px; }"
+            "QPushButton { background: rgba(255,255,255,0.05); color: #e8f6ff;"
+            " border: 1px solid rgba(0, 229, 255, 0.35); border-radius: 8px;"
+            " padding: 3px 8px; font: 600 8pt 'Segoe UI'; }"
+            "QPushButton:hover { background: rgba(0, 229, 255, 0.22); }"
+            "QLabel { color: rgba(255,255,255,0.72); background: transparent; font: 8pt 'Segoe UI'; }"
+        )
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(8, 3, 8, 3)
+        lay.setSpacing(6)
+        bar.hide()
+        return bar
+
+    def attach_files(self, paths) -> list[dict]:
+        """Attach local files/images to the next outgoing message."""
+        try:
+            from core.image_blob import attachment_dict
+        except Exception:
+            def attachment_dict(p):
+                return {"name": Path(str(p)).name, "path": str(p), "type": "file"}
+
+        added: list[dict] = []
+        for raw in (paths or []):
+            path = str(raw or "").strip()
+            if not path or not Path(path).is_file():
+                continue
+            att = attachment_dict(path)
+            if any(str(a.get("path")) == path for a in self._pending_attachments):
+                continue
+            self._pending_attachments.append(att)
+            added.append(att)
+        if added:
+            self._refresh_attachment_bar()
+        return added
+
+    def _remove_attachment(self, index: int) -> None:
+        try:
+            self._pending_attachments.pop(index)
+        except Exception:
+            return
+        self._refresh_attachment_bar()
+
+    def _clear_attachments(self) -> None:
+        self._pending_attachments = []
+        self._refresh_attachment_bar()
+
+    def _refresh_attachment_bar(self) -> None:
+        bar = getattr(self, "_attachment_bar", None)
+        if bar is None:
+            return
+        lay = bar.layout()
+        if lay is None:
+            return
+        while lay.count():
+            item = lay.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if not self._pending_attachments:
+            bar.hide()
+            return
+        hint = QLabel("Attached — sent with your next message:")
+        lay.addWidget(hint)
+        for idx, att in enumerate(self._pending_attachments):
+            chip = QPushButton(f"{att.get('name') or 'file'}  ✕")
+            chip.setToolTip(str(att.get("path") or ""))
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            chip.clicked.connect(lambda _=False, i=idx: self._remove_attachment(i))
+            lay.addWidget(chip)
+        lay.addStretch(1)
+        bar.show()
+
+
+class WorkspaceSidebar(_ChatAttachmentsMixin, QWidget):
+    command_submitted = pyqtSignal(str, list)
     close_requested = pyqtSignal()
     attach_requested = pyqtSignal()
     mic_requested = pyqtSignal()
@@ -3329,6 +3463,7 @@ class WorkspaceSidebar(QWidget):
         self._anim = QPropertyAnimation(self, b"geometry", self)
         self._anim.setDuration(300)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._init_chat_attachments()
 
         self._panel = QFrame(self)
         self._panel.setObjectName("WorkspaceSidebarPanel")
@@ -3557,6 +3692,8 @@ class WorkspaceSidebar(QWidget):
         self._send_btn.clicked.connect(self._send)
         input_row.addWidget(self._send_btn)
 
+        self._attachment_bar = self._new_attachment_bar()
+        lay.addWidget(self._attachment_bar)
         lay.addWidget(input_container)
 
         return page
@@ -3939,15 +4076,17 @@ class WorkspaceSidebar(QWidget):
 
     def _send(self):
         text = self._input.text().strip()
-        if not text:
+        attachments = list(getattr(self, "_pending_attachments", []))
+        if not text and not attachments:
             return
         self._input.clear()
-        self._ensure_active_conversation(text)
-        self.command_submitted.emit(text)
+        self._ensure_active_conversation(text or "Attachment")
+        self._clear_attachments()
+        self.command_submitted.emit(text, attachments)
 
 
-class InlineChatWorkspace(QFrame):
-    command_submitted = pyqtSignal(str)
+class InlineChatWorkspace(_ChatAttachmentsMixin, QFrame):
+    command_submitted = pyqtSignal(str, list)
     attach_requested = pyqtSignal()
     mic_requested = pyqtSignal()
 
@@ -3956,6 +4095,7 @@ class InlineChatWorkspace(QFrame):
         self.setObjectName("InlineChatWorkspace")
         self._store = workspace_store()
         self._active_conversation_id: str | None = None
+        self._init_chat_attachments()
         self.setStyleSheet(
             """
             QFrame#InlineChatWorkspace {
@@ -4143,6 +4283,8 @@ class InlineChatWorkspace(QFrame):
         self._send_btn.clicked.connect(self._send)
         input_row.addWidget(self._send_btn)
 
+        self._attachment_bar = self._new_attachment_bar()
+        lay.addWidget(self._attachment_bar)
         lay.addWidget(input_container)
 
         footer = QHBoxLayout()
@@ -4309,11 +4451,11 @@ class InlineChatWorkspace(QFrame):
         if not raw:
             return
         low = raw.lower()
-        if low.startswith("you:"):
-            self.record_chat_event({"role": "user", "text": raw.split(":", 1)[1].strip()})
-        elif low.startswith("NIGHTFALL evo:"):
-            self.record_chat_event({"role": "assistant", "text": raw.split(":", 1)[1].strip()})
-        elif low.startswith("sys:"):
+        if low.startswith(("you:", "nightfall evo:")):
+            # Delivered through on_chat_event (which also carries attachments);
+            # recording here as well would duplicate the bubble.
+            return
+        if low.startswith("sys:"):
             self.record_chat_event({"role": "system", "text": raw.split(":", 1)[1].strip()})
         elif low.startswith("file:"):
             self.record_chat_event({"role": "file", "text": raw.split(":", 1)[1].strip()})
@@ -4357,12 +4499,12 @@ class InlineChatWorkspace(QFrame):
 
     def _send(self):
         text = self._input.text().strip() if hasattr(self, "_input") else ""
-        if not text:
+        attachments = list(getattr(self, "_pending_attachments", []))
+        if not text and not attachments:
             return
         self._input.clear()
-        convo_id = self._ensure_conversation(text)
-        self.record_chat_event({"role": "user", "text": text, "conversation_id": convo_id})
-        self.command_submitted.emit(text)
+        self._clear_attachments()
+        self.command_submitted.emit(text, attachments)
 
     def focus_input(self):
         if hasattr(self, "_input"):
@@ -8563,6 +8705,13 @@ class MainWindow(QMainWindow):
         self._call_screening_transcript: QLabel | None = None
         self._meeting_overlay_collapsed = False
         self._chat_source_queue: deque[str] = deque()
+        # Optional callable returning the chat widget that should receive a
+        # picked file (the slide-out side bar when the app is minimised).
+        self._attachment_target = None
+        # Text of the user message submit_command() published itself, so a later
+        # "You: ..." log line for the same text (e.g. the live session echoing
+        # the prompt it was given) does not create a second chat bubble.
+        self._published_user_text: str = ""
 
         central = BackgroundWidget(BACKGROUND_IMAGE_FILE if BACKGROUND_IMAGE_FILE.exists() else None)
         central.setStyleSheet("background: transparent;")
@@ -9216,6 +9365,33 @@ class MainWindow(QMainWindow):
         if path:
             self._on_file_selected(path)
 
+    def _on_file_selected(self, path: str):
+        """Attach a picked file to the next message sent from the chat pane."""
+        path = str(path or "").strip()
+        if not path:
+            return
+        target = None
+        resolver = getattr(self, "_attachment_target", None)
+        if callable(resolver):
+            try:
+                target = resolver()
+            except Exception:
+                target = None
+        if target is None:
+            target = getattr(self, "_inline_workspace", None)
+        if target is not None and hasattr(target, "attach_files"):
+            try:
+                target.attach_files([path])
+                if hasattr(target, "focus_input"):
+                    target.focus_input()
+                return
+            except Exception:
+                pass
+        try:
+            self._log_sig.emit(f"SYS: Could not attach {Path(path).name}.")
+        except Exception:
+            pass
+
     def _toggle_mute(self):
         self._muted = not self._muted
         self._wakeword_listening = self._muted
@@ -9268,17 +9444,18 @@ class MainWindow(QMainWindow):
                 QPushButton:hover {{ border: 1px solid {C.WHITE}; }}
             """)
 
-    def _send(self, txt: str = ""):
+    def _send(self, txt: str = "", attachments: list | None = None):
         if not txt:
             txt = self._input.text().strip()
             self._input.clear()
-        if not txt:
+        if not txt and not attachments:
             return
-        self.submit_command(txt)
+        self.submit_command(txt, attachments=attachments)
 
-    def submit_command(self, txt: str, source: str = "local"):
+    def submit_command(self, txt: str, source: str = "local", attachments: list | None = None):
         txt = (txt or "").strip()
-        if not txt:
+        attachments = list(attachments or [])
+        if not txt and not attachments:
             return
         self._chat_source_queue.append(source or "local")
         if hasattr(self, "_command_card"):
@@ -9289,9 +9466,25 @@ class MainWindow(QMainWindow):
             self._result_card.set_body("Waiting for reply...")
             self._result_card.hide()
         self._restart_card_hide_timer()
-        self._log_sig.emit(f"You: {txt}")
+        # Publish the user's message (with any attachments, e.g. a snip) once
+        # through the chat-event pipeline so it shows in every chat pane.
+        if self.on_chat_event:
+            try:
+                self.on_chat_event({
+                    "role": "user",
+                    "text": txt or "(attachment)",
+                    "source": source or "local",
+                    "attachments": attachments,
+                })
+            except Exception:
+                pass
+        self._published_user_text = (txt or "").strip()
         if self.on_text_command:
-            threading.Thread(target=self.on_text_command, args=(txt, source or "local"), daemon=True).start()
+            threading.Thread(
+                target=self.on_text_command,
+                args=(txt, source or "local", attachments),
+                daemon=True,
+            ).start()
 
     def _on_log_text(self, text: str):
         self._log.append_log(text)
@@ -9300,7 +9493,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_result_card") and low.startswith("you:"):
             user_msg = raw.split(":", 1)[1].strip()
             source = self._chat_source_queue[0] if self._chat_source_queue else "local"
-            if self.on_chat_event and user_msg:
+            published = (getattr(self, "_published_user_text", "") or "").strip()
+            if published and user_msg.strip().lower() == published.lower():
+                # Already shown by submit_command(); do not duplicate it.
+                self._published_user_text = ""
+            elif self.on_chat_event and user_msg:
                 try:
                     self.on_chat_event({"role": "user", "text": user_msg, "source": source})
                 except Exception:
@@ -14243,6 +14440,7 @@ class NIGHTFALLUI:
         self._command_bar.developer_clicked.connect(self._open_developer_mode_dialog)
         self._workspace_sidebar.command_submitted.connect(self._submit_command)
         self._workspace_sidebar.attach_requested.connect(self._browse_attachment)
+        self._win._attachment_target = self._visible_chat_widget
         self._workspace_sidebar.mic_requested.connect(self._toggle_mute)
         self._workspace_sidebar.close_requested.connect(self._close_workspace_sidebar)
         self._win.minimized.connect(self._on_minimized)
@@ -14632,6 +14830,15 @@ class NIGHTFALLUI:
         else:
             self._show_workspace_sidebar()
 
+    def _visible_chat_widget(self):
+        """Chat input a picked file should be attached to."""
+        try:
+            if self._workspace_sidebar.isVisible() and not self._win.isVisible():
+                return self._workspace_sidebar
+        except Exception:
+            pass
+        return getattr(self._win, "_inline_workspace", None)
+
     def _show_workspace_sidebar(self):
         self._workspace_sidebar.show_workspace()
         self._workspace_sidebar.focus_input()
@@ -14727,8 +14934,8 @@ class NIGHTFALLUI:
             current = bool(self._load_app_settings().get("show_workspace_on_startup", False))
             self._toggle_workspace_on_startup(not current)
 
-    def _submit_command(self, text: str):
-        self._win.submit_command(text)
+    def _submit_command(self, text: str, attachments: list | None = None):
+        self._win.submit_command(text, attachments=attachments)
 
     def _browse_attachment(self):
         self._win._browse_attachment()

@@ -287,7 +287,7 @@ class _LiveSession:
                     if transcript_buf and self._player:
                         full = re.sub(r'\s+', ' ', " ".join(transcript_buf)).strip()
                         if full:
-                            self._player.write_log(f"NIGHTFALL AI: {full}")
+                            self._player.write_log(f"NIGHTFALL Evo: {full}")
                             print(f"[ScreenProcess] [MSG] {full}")
                             if hasattr(self._player, "set_scanning"):
                                 self._player.set_scanning(False, "")

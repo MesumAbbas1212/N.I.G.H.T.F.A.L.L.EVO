@@ -137,3 +137,271 @@ def test_guard_ignores_ordinary_commands():
 
     assert main._parse_quick_action_payload("open notepad please") is None
     assert main._parse_quick_action_payload("remember that my name is Sydro") is None
+
+
+# -- Alt -> Screen snips are attached to the chat ----------------------------
+
+def _tiny_png(path) -> str:
+    """Write a valid 1x1 PNG so attachment handling can be exercised."""
+    import struct
+    import zlib
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        body = tag + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    payload = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00"))
+        + chunk(b"IEND", b"")
+    )
+    path.write_bytes(payload)
+    return str(path)
+
+
+class _FakeChat:
+    def __init__(self, visible: bool = True):
+        self._visible = visible
+        self.attached: list[str] = []
+        self.events: list[dict] = []
+        self.focused = 0
+
+    def isVisible(self) -> bool:
+        return self._visible
+
+    def attach_files(self, paths):
+        self.attached.extend(str(p) for p in paths)
+        return [{"path": str(p)} for p in paths]
+
+    def record_chat_event(self, event):
+        self.events.append(event)
+
+    def focus_input(self):
+        self.focused += 1
+
+
+class _FakeWin:
+    def __init__(self, inline, visible=True, minimised=False):
+        self._inline_workspace = inline
+        self._visible = visible
+        self._minimised = minimised
+        self._right_collapsed = True
+        self.toggled = 0
+
+    def isVisible(self):
+        return self._visible
+
+    def isMinimized(self):
+        return self._minimised
+
+    def _toggle_right_sidebar(self):
+        self.toggled += 1
+        self._right_collapsed = False
+
+
+class _FakeUI:
+    def __init__(self, win, sidebar):
+        self._win = win
+        self._workspace_sidebar = sidebar
+        self.sidebar_shown = 0
+
+    def set_state(self, state):
+        pass
+
+    def write_log(self, text):
+        pass
+
+    def _show_workspace_sidebar(self):
+        self.sidebar_shown += 1
+        self._workspace_sidebar._visible = True
+
+
+def _manager(ui):
+    pytest.importorskip("PyQt6.QtWidgets")
+    from PyQt6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    return qa.QuickActionsManager(ui)
+
+
+def test_image_blob_helpers(tmp_path):
+    from core import image_blob
+
+    png = _tiny_png(tmp_path / "snip.png")
+    assert image_blob.is_image_path(png)
+    assert not image_blob.is_image_path(str(tmp_path / "notes.txt"))
+
+    blob = image_blob.prepare_image_blob(png)
+    assert blob is not None
+    data, mime = blob
+    assert data and str(mime).startswith("image/")
+
+    assert image_blob.prepare_image_blob(str(tmp_path / "missing.png")) is None
+    assert image_blob.attachment_dict(png) == {
+        "name": "snip.png",
+        "path": png,
+        "type": "image",
+    }
+
+
+def test_snip_attaches_screenshot_to_both_chat_panes(tmp_path):
+    png = _tiny_png(tmp_path / "snip.png")
+    inline = _FakeChat(visible=True)
+    sidebar = _FakeChat(visible=False)
+    win = _FakeWin(inline, visible=True, minimised=False)
+    mgr = _manager(_FakeUI(win, sidebar))
+
+    mgr._on_snip(png)
+
+    # the in-app chat pane slides open and shows the screenshot
+    assert win.toggled == 1
+    assert inline.attached == [png]
+    assert sidebar.attached == [png]
+    assert len(inline.events) == 1
+    assert inline.events[0]["attachments"][0]["path"] == png
+    assert inline.focused == 1
+    assert sidebar.events == []
+
+
+def test_snip_uses_side_bar_chat_when_app_is_minimised(tmp_path):
+    png = _tiny_png(tmp_path / "snip.png")
+    inline = _FakeChat(visible=False)
+    sidebar = _FakeChat(visible=False)
+    win = _FakeWin(inline, visible=False, minimised=True)
+    ui = _FakeUI(win, sidebar)
+    mgr = _manager(ui)
+
+    mgr._on_snip(png)
+
+    assert ui.sidebar_shown == 1
+    assert len(sidebar.events) == 1
+    assert sidebar.events[0]["attachments"][0]["path"] == png
+    assert sidebar.focused == 1
+    # still pending on both inputs so the user can type in either chat
+    assert inline.attached == [png]
+    assert sidebar.attached == [png]
+
+
+def test_image_attachments_are_kept_only_for_real_images(tmp_path):
+    import main
+
+    png = _tiny_png(tmp_path / "snip.png")
+    txt = tmp_path / "notes.txt"
+    txt.write_text("hello", encoding="utf-8")
+
+    images = main._image_attachments([
+        {"path": png},
+        {"path": str(txt)},
+        {"path": str(tmp_path / "missing.png")},
+        "junk",
+        None,
+    ])
+    assert [i["path"] for i in images] == [str(png)]
+    assert main._image_attachments(None) == []
+
+
+def test_message_with_image_is_routed_to_the_vision_handler(monkeypatch, tmp_path):
+    import main
+
+    png = _tiny_png(tmp_path / "snip.png")
+    handled = []
+
+    class FakeUI:
+        muted = True
+
+        def set_state(self, state):
+            pass
+
+        def write_log(self, message):
+            pass
+
+    assistant = object.__new__(main.NIGHTFALLLive)
+    assistant.ui = FakeUI()
+    assistant._reset_idle_activity = lambda: None
+    assistant._handle_image_command = lambda text, images, source="local": handled.append((text, images, source))
+
+    assistant._on_text_command("what does this say?", attachments=[{"path": png, "type": "image"}])
+
+    assert handled == [("what does this say?", [{"name": "snip.png", "path": png, "type": "image"}], "local")]
+
+
+def test_plain_message_is_not_routed_to_the_vision_handler():
+    import main
+
+    handled = []
+
+    class FakeUI:
+        muted = True
+
+        def set_state(self, state):
+            pass
+
+        def write_log(self, message):
+            pass
+
+    assistant = object.__new__(main.NIGHTFALLLive)
+    assistant.ui = FakeUI()
+    assistant._reset_idle_activity = lambda: None
+    assistant._handle_image_command = lambda *a, **k: handled.append(a)
+
+    try:
+        assistant._on_text_command("open notepad please")
+    except Exception:
+        # the rest of the router needs a fully wired agent; what matters here
+        # is that the vision handler was never invoked.
+        pass
+    assert handled == []
+
+
+def test_user_message_is_published_once_with_its_attachments():
+    """A typed command must create exactly one chat bubble, carrying the snip."""
+    import ui
+
+    class FakeLog:
+        def __init__(self):
+            self.lines = []
+
+        def append_log(self, text):
+            self.lines.append(text)
+
+    class FakeCard:
+        def set_body(self, *a):
+            pass
+
+        def hide(self):
+            pass
+
+    class FakeWin:
+        def __init__(self):
+            self._log = FakeLog()
+            self._result_card = FakeCard()
+            self._chat_source_queue = __import__("collections").deque()
+            self._published_user_text = ""
+            self.on_chat_event = None
+            self.on_text_command = lambda *a, **k: None
+            self.events = []
+
+        def _restart_card_hide_timer(self):
+            pass
+
+    win = FakeWin()
+    win.on_chat_event = win.events.append
+
+    ui.MainWindow.submit_command(win, "what does this say?", attachments=[
+        {"name": "snip.png", "path": "snip.png", "type": "image"},
+    ])
+
+    assert len(win.events) == 1
+    assert win.events[0]["role"] == "user"
+    assert win.events[0]["attachments"][0]["path"] == "snip.png"
+
+    # The live session echoing the same prompt must not add a second bubble ...
+    ui.MainWindow._on_log_text(win, "You: what does this say?")
+    assert [e["role"] for e in win.events] == ["user"]
+
+    # ... but a different user line (voice input) still shows up.
+    ui.MainWindow._on_log_text(win, "You: open notepad")
+    assert [e["text"] for e in win.events if e["role"] == "user"] == [
+        "what does this say?", "open notepad",
+    ]

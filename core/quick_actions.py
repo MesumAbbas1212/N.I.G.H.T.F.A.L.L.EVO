@@ -629,30 +629,80 @@ class QuickActionsManager(QObject):
 
         threading.Thread(target=_worker, daemon=True, name="quick-action").start()
 
+    def _chat_widgets(self):
+        """(in-app chat, slide-out side bar chat) currently available."""
+        inline = None
+        sidebar = None
+        try:
+            inline = getattr(getattr(self._ui, "_win", None), "_inline_workspace", None)
+        except Exception:
+            inline = None
+        try:
+            sidebar = getattr(self._ui, "_workspace_sidebar", None)
+        except Exception:
+            sidebar = None
+        return inline, sidebar
+
     def _on_snip(self, path: str):
+        """Attach a captured region to the chat so it can be asked about.
+
+        The screenshot is shown in the visible chat pane (the in-app chat, or
+        the slide-out side bar chat when the app is minimised) and stays
+        pending on both inputs, so the next message the user types carries the
+        image to the model.
+        """
         _log(f"snip captured: {path}")
         try:
-            self._ensure_chat_open()
-            target = None
-            try:
-                target = getattr(getattr(self._ui, "_win", None), "_inline_workspace", None)
-                target = getattr(target, "_input", None)
-            except Exception:
-                target = None
-            if target is None:
-                target = getattr(getattr(self._ui, "_workspace_sidebar", None), "_input", None)
-            if target is not None:
-                target.setText(f"Here is a screenshot saved at: {path}\n\n")
-                target.setCursorPosition(len(target.text()))
-                target.setFocus()
-                _log("input focused")
+            inline, sidebar = self._chat_widgets()
+            win = getattr(self._ui, "_win", None)
+            app_visible = bool(win is not None and win.isVisible() and not win.isMinimized())
+
+            if app_visible:
+                # In-app chat: slide the right chat pane open.
+                self._ensure_chat_open()
+                target = inline if (inline is not None and inline.isVisible()) else None
             else:
-                # No chat input available: keep the screenshot out of the agent
-                # pipeline and just surface it in the chat log.
-                _log("no chat input found; screenshot left in chat log")
+                # App minimised to the launcher: open the side bar chat.
+                show = getattr(self._ui, "_show_workspace_sidebar", None)
+                if callable(show):
+                    show()
+                target = sidebar if (sidebar is not None and sidebar.isVisible()) else None
+            if target is None:
+                target = inline if inline is not None else sidebar
+
+            # Keep the image pending on both inputs so the user can type in
+            # whichever chat pane they prefer.
+            for widget in (inline, sidebar):
+                if widget is not None and hasattr(widget, "attach_files"):
+                    try:
+                        widget.attach_files([path])
+                    except Exception as exc:
+                        _log(f"attach failed: {exc}")
+
+            if target is not None and hasattr(target, "record_chat_event"):
                 try:
-                    self._ui.write_log(f"SYS: Screenshot captured at {path}")
+                    from core.image_blob import attachment_dict
+                    target.record_chat_event({
+                        "role": "user",
+                        "text": "Screenshot captured — ask me anything about it.",
+                        "attachments": [attachment_dict(path)],
+                        "source": "quick_action",
+                    })
+                except Exception as exc:
+                    _log(f"posting snip bubble failed: {exc}")
+
+            focus = getattr(target, "focus_input", None)
+            if callable(focus):
+                try:
+                    focus()
                 except Exception:
                     pass
+            else:
+                box = getattr(target, "_input", None)
+                if box is not None:
+                    try:
+                        box.setFocus()
+                    except Exception:
+                        pass
         except Exception as exc:
             _log(f"[QuickActions] snip attach failed: {exc}")

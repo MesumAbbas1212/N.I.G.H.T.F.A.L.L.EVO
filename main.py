@@ -647,6 +647,28 @@ def _memory_context_for_request(text: str) -> str:
         return ""
 
 
+def _image_attachments(attachments) -> list[dict]:
+    """Filter a chat attachment list down to readable local images."""
+    result: list[dict] = []
+    for att in (attachments or []):
+        if isinstance(att, dict):
+            path = str(att.get("path") or att.get("file") or att.get("name") or "").strip()
+        else:
+            path = str(att or "").strip()
+        if not path:
+            continue
+        try:
+            from core.image_blob import is_image_path
+            if not is_image_path(path):
+                continue
+        except Exception:
+            if not path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")):
+                continue
+        if Path(path).is_file():
+            result.append({"name": Path(path).name, "path": path, "type": "image"})
+    return result
+
+
 def _parse_quick_action_payload(text: str):
     """Detect a Quick Actions (Alt menu) payload.
 
@@ -2243,10 +2265,135 @@ class NIGHTFALLLive:
 
         threading.Thread(target=_worker, daemon=True, name="quick-action-guard").start()
 
-    def _on_text_command(self, text: str, source: str = "local"):
+    def _handle_image_command(self, text: str, images: list[dict], source: str = "local") -> None:
+        """Answer a question about user-supplied images (e.g. a snip).
+
+        The image is sent to the model as an inline part together with the
+        user's own instruction. No memory extraction and no task workspace:
+        the image is the user's input, not something to act on behind the
+        scenes.
+        """
+        text = (text or "").strip() or "What do you see in this image? Answer briefly."
+        self.ui.set_state("THINKING")
+        try:
+            stop_native_speech()
+        except Exception:
+            pass
+
+        def _worker():
+            import base64
+
+            parts: list[dict] = []
+            blobs: list[tuple[bytes, str]] = []
+            for image in images:
+                try:
+                    from core.image_blob import prepare_image_blob
+                    blob = prepare_image_blob(image.get("path"))
+                except Exception:
+                    blob = None
+                if not blob:
+                    continue
+                data, mime = blob
+                blobs.append((data, mime))
+                parts.append({
+                    "inline_data": {
+                        "mime_type": mime,
+                        "data": base64.b64encode(data).decode("utf-8"),
+                    }
+                })
+            if not parts:
+                reply = "I couldn't read that screenshot. Please try capturing it again."
+            else:
+                parts.append({"text": text})
+                live = bool(self.session and self._loop)
+                if live:
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            self.session.send_client_content(
+                                turns={"parts": parts},
+                                turn_complete=True,
+                            ),
+                            self._loop,
+                        )
+                        # The voice session answers; its transcript lands in chat.
+                        reply = ""
+                    except Exception as exc:
+                        print(f"[NIGHTFALL EVO] Image send failed: {exc}")
+                        live = False
+                else:
+                    live = False
+                if not live:
+                    reply = self._vision_reply(text, blobs)
+            if reply:
+                try:
+                    self.ui.write_log(f"NIGHTFALL Evo: {reply}")
+                except Exception:
+                    pass
+                if not getattr(self.ui, "muted", False):
+                    try:
+                        from actions.attention_monitor import _speak_edge_native
+                        _speak_edge_native(reply)
+                    except Exception:
+                        try:
+                            self.speak(reply, proactive=True)
+                        except Exception:
+                            pass
+            try:
+                self.ui.set_state("LISTENING")
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True, name="image-command").start()
+
+    def _vision_reply(self, text: str, blobs: list[tuple[bytes, str]]) -> str:
+        """Text-only vision fallback used when the live voice session is down."""
+        if not blobs:
+            return ""
+        data, mime = blobs[0]
+        try:
+            from actions.screen_processor import screen_process
+            if screen_process(parameters={"angle": "screen", "text": text}, player=self.ui, image_bytes=data):
+                return ""  # the vision session speaks the answer itself
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Vision session fallback failed: {exc}")
+        try:
+            import base64
+
+            from google import genai
+            from core.quick_actions import _load_config
+            keys = _load_config("api_keys.json")
+            key = str(keys.get("gemini_api_key") or "").strip()
+            if key:
+                client = genai.Client(api_key=key, http_options={"api_version": "v1beta"})
+                resp = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[
+                        {"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode("utf-8")}},
+                        text,
+                    ],
+                )
+                return (getattr(resp, "text", "") or "").strip()
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Gemini vision fallback failed: {exc}")
+        try:
+            import base64
+
+            from llm_client import client as or_client
+            return (or_client.vision(
+                text,
+                base64.b64encode(data).decode("utf-8"),
+                mime,
+                system="You are NIGHTFALL Evo. Look at the image and answer the user's question concisely.",
+            ) or "").strip()
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] OpenRouter vision fallback failed: {exc}")
+            return f"I couldn't analyse that screenshot: {exc}"
+
+    def _on_text_command(self, text: str, source: str = "local", attachments: list | None = None):
         self._reset_idle_activity()
         text = (text or "").strip()
-        if not text:
+        images = _image_attachments(attachments)
+        if not text and not images:
             return
         # Quick Actions (Alt menu) payloads carry untrusted captured text that
         # is DATA ONLY. Answer them with a plain, tool-free reply: no memory
@@ -2254,6 +2401,11 @@ class NIGHTFALLLive:
         quick_action = _parse_quick_action_payload(text)
         if quick_action is not None:
             self._handle_quick_action_request(quick_action)
+            return
+        # A message carrying an image (e.g. an Alt -> Screen snip) is a vision
+        # question: send the image plus the user's own instruction to the model.
+        if images:
+            self._handle_image_command(text, images, source)
             return
         if len(text) > 4:
             threading.Thread(
