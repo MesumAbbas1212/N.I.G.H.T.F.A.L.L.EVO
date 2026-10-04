@@ -385,18 +385,87 @@ def _clipboard_gemini_reply(text: str) -> str:
         return "Interesting stuff you copied there!"
 
 
-def _looks_like_code_request(text: str) -> bool:
-    low = (text or "").lower()
-    code_words = (
-        "build", "create", "write", "implement", "code", "python", "app",
-        "module", "function", "class", "project", "script", "api",
-        "ui", "webpage", "bot", "server", "service"
+# ---------------------------------------------------------------------------
+# Build-request detection.
+#
+# These helpers used to match keywords as substrings, so ordinary sentences
+# were routed into the dev agent: "what happened to the march" contains "app"
+# (in "happened") and was treated as "build me an app", which produced a pile
+# of raw shell commands and a build-error apology instead of an answer.
+# Everything below matches whole words and only fires on a real build request.
+# ---------------------------------------------------------------------------
+
+_BUILD_ACTION_WORDS = (
+    "build", "create", "write", "implement", "develop", "generate", "make",
+    "scaffold", "program", "code", "fix", "debug", "refactor", "add",
+)
+
+_BUILD_NOUN_WORDS = (
+    "app", "apps", "application", "applications", "website", "websites",
+    "webpage", "webpages", "site", "sites", "webapp", "web", "program",
+    "programs", "script", "scripts", "project", "projects", "module",
+    "modules", "function", "functions", "class", "classes", "api", "apis",
+    "server", "servers", "service", "services", "bot", "bots", "game",
+    "games", "calculator", "html", "css", "javascript", "python", "react",
+    "frontend", "backend", "ui", "cli", "database", "backend",
+)
+
+_QUESTION_STARTERS = (
+    "what", "whats", "which", "who", "whom", "whose", "when", "where", "why",
+    "how", "is", "are", "was", "were", "do", "does", "did", "tell", "explain",
+    "summarize", "summarise", "describe", "define", "list", "show", "check",
+    "read", "translate", "find", "search", "give", "compare", "verify",
+)
+
+
+def _word_present(word: str, low: str) -> bool:
+    """Whole-word match, so 'app' never matches inside 'happened'."""
+    return re.search(rf"\b{re.escape(word)}\b", low) is not None
+
+
+def _is_informational_question(text: str) -> bool:
+    """True for a question that wants an answer, not something built.
+
+    "What is today's critical news in Pakistan?" is a question.
+    "Can you build me a website?" is also a question, but it asks for a build -
+    the build verb keeps it out of this bucket.
+    """
+    low = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    if not low:
+        return False
+    if any(_word_present(word, low) for word in _BUILD_ACTION_WORDS):
+        return False
+    stripped = re.sub(r"^(please|pls|kindly|hey nightfall(?: evo)?)[,\s]+", "", low)
+    words = stripped.split()
+    if not words:
+        return False
+    if words[0] in _QUESTION_STARTERS:
+        return True
+    # Any other question that asks about something, rather than for something.
+    return stripped.endswith("?") and any(
+        _word_present(word, stripped) for word in ("what", "who", "when", "where", "why", "how", "which")
     )
-    return any(word in low for word in code_words)
+
+
+def _looks_like_code_request(text: str) -> bool:
+    """True when the user asks for code or an app to be built.
+
+    A build request needs a build verb *and* a thing to build, matched on whole
+    words.  Substring matching was the bug that sent "what happened to the
+    march" to the dev agent: "happened" contains "app".
+    """
+    low = (text or "").lower()
+    if _is_informational_question(text):
+        return False
+    has_action = any(_word_present(word, low) for word in _BUILD_ACTION_WORDS)
+    has_noun = any(_word_present(word, low) for word in _BUILD_NOUN_WORDS)
+    return has_action and has_noun
 
 
 def _looks_like_website_request(text: str) -> bool:
     low = (text or "").lower()
+    if _is_informational_question(text):
+        return False
     website_words = (
         "website",
         "web site",
@@ -450,7 +519,7 @@ def _looks_like_document_request(text: str) -> bool:
         "letter", "notes",
     )
     action_words = ("write", "create", "make", "generate", "draft", "prepare", "build", "produce")
-    has_keyword = any(keyword in low for keyword in doc_keywords)
+    has_keyword = any(_word_present(keyword, low) for keyword in doc_keywords)
     has_action = any(re.search(rf"\b{re.escape(action)}\b", low) for action in action_words)
     if not (has_keyword and has_action):
         return False
@@ -2924,8 +2993,16 @@ class NIGHTFALLLive:
             threading.Thread(target=_run_document, daemon=True, name="document-generator").start()
             return
 
+        # A build request must name both an action and a thing to build, on
+        # whole words. Plain questions ("what happened to the march") go to the
+        # assistant, which can search the web, instead of the dev agent.
         website_request = _looks_like_website_request(text)
-        code_request = (not presentation_request and not spreadsheet_request and not document_request) and _looks_like_code_request(text) and any(w in text.lower() for w in ("app", "website", "web", "program", "script", "project", "game", "calc", "html", "react"))
+        code_request = (
+            not presentation_request
+            and not spreadsheet_request
+            and not document_request
+            and _looks_like_code_request(text)
+        )
 
         if website_request or code_request:
             self.speak("Working on your project with NIGHTFALL Dev...")

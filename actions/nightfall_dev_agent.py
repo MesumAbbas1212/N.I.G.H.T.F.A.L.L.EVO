@@ -1,4 +1,4 @@
-﻿from core.user_paths import get_user_data_dir
+from core.user_paths import get_user_data_dir
 import os
 import re
 import sys
@@ -255,6 +255,35 @@ You can call multiple tools in one turn if they are independent.
 When your work is fully done and verified, provide your final response to the user without any `<tool_call>` tags.
 """
 
+def _summarize_action(msg: str) -> str:
+    """One short spoken sentence for a tool action - never the raw command."""
+    text = (msg or "").strip()
+    if not text:
+        return ""
+    if text.startswith("⚡"):
+        command = text.split(":", 1)[1].strip() if ":" in text else ""
+        low = command.lower()
+        if "pytest" in low or "unittest" in low or "test" in low.split():
+            return "Running the tests."
+        if "npm " in low or "yarn " in low or "build" in low:
+            return "Building the project."
+        if "pip install" in low or "npm install" in low or "npm i " in low:
+            return "Installing a dependency."
+        if "python" in low or low.startswith("py "):
+            return "Running a Python command."
+        verb = command.split()[0] if command.split() else "a command"
+        return f"Running {verb}."
+    if text.startswith("📝"):
+        name = text.split(":", 1)[1].strip() if ":" in text else ""
+        return f"Writing {name}." if name else "Writing a file."
+    if text.startswith("✏️"):
+        name = text.split(":", 1)[1].strip() if ":" in text else ""
+        return f"Editing {name}." if name else "Editing a file."
+    if text.startswith("🔍") or text.startswith("📖"):
+        return "Looking through the project."
+    return ""
+
+
 # ==============================================================================
 # AUTONOMOUS HERMES-STYLE AGENT LOOP
 # ==============================================================================
@@ -268,10 +297,12 @@ class NIGHTFALLDevAgent:
 
     def _on_action(self, msg: str):
         if self.speak:
-            # Speak high-level summaries only
-            if msg.startswith("⚡") or msg.startswith("📝") or msg.startswith("✏️"):
-                clean = re.sub(r"[^\w\s\-\.\:\/]", "", msg).strip()
-                self.speak(clean)
+            # Speak a one-line summary, never the raw command: dumping the
+            # whole of `python -c "...urls and selectors..."` into the chat
+            # buried the conversation in shell text.
+            spoken = _summarize_action(msg)
+            if spoken:
+                self.speak(spoken)
         print(f"[NIGHTFALLDev] {msg}")
 
     def _execute_tool(self, name: str, args: dict[str, Any]) -> str:
@@ -375,7 +406,32 @@ class NIGHTFALLDevAgent:
         except Exception:
             pass
 
-        raise RuntimeError("AI model service temporarily unavailable or rate-limited. Please wait 10 seconds and try again.")
+        # Finally, every provider configured in Settings, in Jeff's order. The
+        # dev agent used to stop at Gemini + OpenRouter, so an exhausted free
+        # Gemini tier made every build fail while other providers sat unused.
+        try:
+            from core import provider_registry
+            messages = [
+                {"role": str(m.get("role") or "user"), "content": str(m.get("content") or "")}
+                for m in self.history
+            ]
+            reply, provider, errors = provider_registry.chat_failover(
+                messages, temperature=0.2, timeout=120
+            )
+            if errors:
+                logger.info(
+                    "[NIGHTFALLDev] providers skipped before %s: %s",
+                    provider.get("name"), "; ".join(errors)[:300],
+                )
+            if reply:
+                return reply
+        except Exception as exc:
+            logger.warning(f"[NIGHTFALLDev] configured providers failed too: {exc}")
+
+        raise RuntimeError(
+            "No AI provider could answer (Gemini quota, then every configured provider failed). "
+            "Add another key in Settings, Custom AI Providers."
+        )
 
 
 
