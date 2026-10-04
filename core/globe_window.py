@@ -1,5 +1,5 @@
-"""
-Brahma 3D HoloGlobe Window Controller.
+﻿"""
+NIGHTFALL 3D HoloGlobe Window Controller.
 Hosts the WebGL 3D Earth, Great-Circle route visualizer, and live flight radar inside a modern PyQt6 window.
 """
 
@@ -146,7 +146,7 @@ class GlobeWindow(QWidget):
         tb_layout = QHBoxLayout(title_bar)
         tb_layout.setContentsMargins(18, 0, 14, 0)
 
-        title_lbl = QLabel("🌐  BRAHMA MAPS // GEOSPATIAL INTELLIGENCE")
+        title_lbl = QLabel("🌐  NIGHTFALL MAPS // GEOSPATIAL INTELLIGENCE")
         title_lbl.setStyleSheet("color: #bae6fd; font-size: 12px; font-weight: 700; letter-spacing: 0.1em;")
         tb_layout.addWidget(title_lbl)
 
@@ -244,13 +244,13 @@ class GlobeWindow(QWidget):
         self._is_page_loaded = ok
         if ok and self._web_view:
             if not self.isVisible():
-                self._web_view.page().runJavaScript("if (window.BrahmaGlobe && window.BrahmaGlobe.pause) window.BrahmaGlobe.pause();")
+                self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.pause) window.NIGHTFALLGlobe.pause();")
             else:
-                self._web_view.page().runJavaScript("if (window.BrahmaGlobe && window.BrahmaGlobe.resume) window.BrahmaGlobe.resume();")
+                self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.resume) window.NIGHTFALLGlobe.resume();")
         if getattr(self, "_pending_mode", None) and self._web_view:
             pm = self._pending_mode
             self._pending_mode = None
-            self._web_view.page().runJavaScript(f"if (window.BrahmaGlobe && window.BrahmaGlobe.switchMode) window.BrahmaGlobe.switchMode('{pm}');")
+            self._web_view.page().runJavaScript(f"if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.switchMode) window.NIGHTFALLGlobe.switchMode('{pm}');")
         if self._pending_route:
             d = self._pending_route
             self._pending_route = None
@@ -403,12 +403,12 @@ class GlobeWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if self._web_view and getattr(self, "_is_page_loaded", False):
-            self._web_view.page().runJavaScript("if (window.BrahmaGlobe && window.BrahmaGlobe.resume) window.BrahmaGlobe.resume();")
+            self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.resume) window.NIGHTFALLGlobe.resume();")
 
     def hideEvent(self, event):
         super().hideEvent(event)
         if self._web_view and getattr(self, "_is_page_loaded", False):
-            self._web_view.page().runJavaScript("if (window.BrahmaGlobe && window.BrahmaGlobe.pause) window.BrahmaGlobe.pause();")
+            self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.pause) window.NIGHTFALLGlobe.pause();")
 
     def _handle_cmd(self, payload: dict):
         """Processes cross-thread requests safely on the main GUI thread."""
@@ -441,11 +441,11 @@ class GlobeWindow(QWidget):
         self.show()
         self.raise_()
         if self._web_view and self._is_page_loaded:
-            self._web_view.page().runJavaScript("if (window.BrahmaGlobe && window.BrahmaGlobe.resume) window.BrahmaGlobe.resume();")
-            carto_fix = 'if (window.BrahmaGlobe && window.BrahmaGlobe.updateCartoKey) { window.BrahmaGlobe.updateCartoKey("cb1_3xgr_1_35c1dc6a9a9b23cb25386cb6"); }'
+            self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.resume) window.NIGHTFALLGlobe.resume();")
+            carto_fix = 'if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.updateCartoKey) { window.NIGHTFALLGlobe.updateCartoKey("cb1_3xgr_1_35c1dc6a9a9b23cb25386cb6"); }'
             self._web_view.page().runJavaScript(carto_fix)
             if mode:
-                self._web_view.page().runJavaScript(f"if (window.BrahmaGlobe && window.BrahmaGlobe.switchMode) window.BrahmaGlobe.switchMode('{mode}');")
+                self._web_view.page().runJavaScript(f"if (window.NIGHTFALLGlobe && window.NIGHTFALLGlobe.switchMode) window.NIGHTFALLGlobe.switchMode('{mode}');")
         elif mode:
             self._pending_mode = mode
         if focus_location:
@@ -457,7 +457,7 @@ class GlobeWindow(QWidget):
             self._pending_route = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.showRoute({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.showRoute({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_show_location(self, data: dict):
@@ -466,7 +466,7 @@ class GlobeWindow(QWidget):
             self._pending_location = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.showLocation({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.showLocation({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_fly_to(self, lat: float, lon: float):
@@ -475,7 +475,7 @@ class GlobeWindow(QWidget):
             self._pending_flyto = {"lat": lat, "lon": lon}
             return
         if self._web_view:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.flyTo({lat}, {lon}, 160);"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.flyTo({lat}, {lon}, 160);"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_flights(self, flights: list):
@@ -484,7 +484,7 @@ class GlobeWindow(QWidget):
             self._pending_flights = flights
             return
         if self._web_view:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.setFlights({json.dumps(flights)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.setFlights({json.dumps(flights)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_driving_route(self, data: dict):
@@ -493,7 +493,7 @@ class GlobeWindow(QWidget):
             self._pending_driving_route = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.showDrivingRoute({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.showDrivingRoute({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_iss(self, data: dict):
@@ -502,7 +502,7 @@ class GlobeWindow(QWidget):
             self._pending_iss = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.setIssData({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.setIssData({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_earthquakes(self, data: list):
@@ -511,7 +511,7 @@ class GlobeWindow(QWidget):
             self._pending_earthquakes = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.setEarthquakes({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.setEarthquakes({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_nearby(self, data: dict):
@@ -520,7 +520,7 @@ class GlobeWindow(QWidget):
             self._pending_nearby = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.setNearbyPlaces({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.setNearbyPlaces({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def _do_weather_radar(self, data: dict):
@@ -529,7 +529,7 @@ class GlobeWindow(QWidget):
             self._pending_radar = data
             return
         if self._web_view and data:
-            js_call = f"if (window.BrahmaGlobe) window.BrahmaGlobe.toggleWeatherRadar({json.dumps(data)});"
+            js_call = f"if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.toggleWeatherRadar({json.dumps(data)});"
             self._web_view.page().runJavaScript(js_call)
 
     def open_globe(self, focus_location: Optional[str] = None, mode: Optional[str] = None):
@@ -753,7 +753,7 @@ class GlobeWindow(QWidget):
 
         def _do_query():
             if self._web_view:
-                self._web_view.page().runJavaScript("if (window.BrahmaGlobe) window.BrahmaGlobe.getCurrentView();", _js_cb)
+                self._web_view.page().runJavaScript("if (window.NIGHTFALLGlobe) window.NIGHTFALLGlobe.getCurrentView();", _js_cb)
 
         if threading.current_thread() is threading.main_thread():
             _do_query()

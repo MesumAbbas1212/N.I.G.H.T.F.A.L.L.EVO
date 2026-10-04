@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature: tracks_international_space_station
 Description: Fetches the International Space Station's live coordinates (latitude, longitude), altitude, and speed, then renders a dark-mode map showing its current position.
 """
@@ -76,7 +76,7 @@ def execute(**kwargs):
         ax.set_title("International Space Station Live Position", color='white', fontsize=16)
 
         # Create output directory if it doesn't exist
-        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
         os.makedirs(output_dir, exist_ok=True)
         image_path = os.path.join(output_dir, 'tracks_international_space_station_output.png')
 

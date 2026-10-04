@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import hashlib
@@ -665,7 +665,7 @@ def _materialize_template_file(downloaded_path: Path, dest_path: Path) -> Path |
         return dest_path
 
     if zipfile.is_zipfile(downloaded_path):
-        with tempfile.TemporaryDirectory(prefix="brahma_pptx_extract_") as tmpdir:
+        with tempfile.TemporaryDirectory(prefix="NIGHTFALL_pptx_extract_") as tmpdir:
             extract_dir = Path(tmpdir)
             with zipfile.ZipFile(downloaded_path, "r") as zf:
                 zf.extractall(extract_dir)

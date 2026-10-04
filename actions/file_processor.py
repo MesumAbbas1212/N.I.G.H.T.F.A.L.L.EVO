@@ -1,5 +1,5 @@
-"""
-file_processor.py — Brahma AI Universal File Processor
+﻿"""
+file_processor.py — NIGHTFALL AI Universal File Processor
 
 Supported types:
   image   → describe, ocr, resize, convert, compress, crop

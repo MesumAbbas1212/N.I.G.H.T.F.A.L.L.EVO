@@ -1,6 +1,6 @@
-"""
+﻿"""
 Skill Discovery & Autonomous Intent Detector
-Part of Project Ultron for Brahma AI.
+Part of Project Ultron for NIGHTFALL AI.
 
 Detects capability gaps from voice/text queries, parses explicit "learn this" commands,
 and runs the background idle reflection daemon ("Dream Cycle").
@@ -18,18 +18,18 @@ logger = logging.getLogger("SkillDiscovery")
 # Regex triggers for explicit skill creation
 LEARN_PATTERNS = [
     # 1. "learn how to...", "teach yourself to...", "figure out how to..."
-    r"(?:brahma\s*,?\s*)?(?:learn\s+how\s+to|teach\s+yourself\s+(?:how\s+)?to|figure\s+out\s+how\s+to)\s+(.+)",
+    r"(?:NIGHTFALL\s*,?\s*)?(?:learn\s+how\s+to|teach\s+yourself\s+(?:how\s+)?to|figure\s+out\s+how\s+to)\s+(.+)",
     # 2. "create/make/build/forge a [optional descriptor] skill/tool/feature that/to/for [action]"
-    r"(?:brahma\s*,?\s*)?(?:create|forge|build|make|synthesize|add|develop)\s+(?:a\s+)?(?:new\s+)?(?:([\w\s-]{2,30})\s+)?(?:skill|tool|feature|capability|plugin|function)\s+(?:for|to|that|which|allowing|where)\s+(.+)",
+    r"(?:NIGHTFALL\s*,?\s*)?(?:create|forge|build|make|synthesize|add|develop)\s+(?:a\s+)?(?:new\s+)?(?:([\w\s-]{2,30})\s+)?(?:skill|tool|feature|capability|plugin|function)\s+(?:for|to|that|which|allowing|where)\s+(.+)",
     # 3. "create/make/build/forge a [descriptor] skill/tool/feature"
-    r"(?:brahma\s*,?\s*)?(?:create|forge|build|make|synthesize|add|develop)\s+(?:a\s+)?(?:new\s+)?(.+?)\s+(?:skill|tool|feature|capability|plugin|function)\b",
+    r"(?:NIGHTFALL\s*,?\s*)?(?:create|forge|build|make|synthesize|add|develop)\s+(?:a\s+)?(?:new\s+)?(.+?)\s+(?:skill|tool|feature|capability|plugin|function)\b",
     # 4. "upgrade yourself with...", "evolve to..."
-    r"(?:brahma\s*,?\s*)?(?:upgrade\s+yourself\s+with|evolve\s+to)\s+(.+)",
+    r"(?:NIGHTFALL\s*,?\s*)?(?:upgrade\s+yourself\s+with|evolve\s+to)\s+(.+)",
 ]
 
 
 class SkillDiscovery:
-    """Detects when Brahma should evolve a new skill."""
+    """Detects when NIGHTFALL should evolve a new skill."""
 
     @classmethod
     def analyze_command(cls, text: str) -> Optional[Dict[str, str]]:

@@ -1,0 +1,4 @@
+﻿<resources>
+    <string name="app_name">NIGHTFALL Evo Connect</string>
+    <string name="accessibility_service_description">NIGHTFALL Evo Connect accessibility bridge for device control setup.</string>
+</resources>

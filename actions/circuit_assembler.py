@@ -1,5 +1,5 @@
-"""
-Brahma AI Evo - Circuit Assembler & Hardware Vision Architect.
+﻿"""
+NIGHTFALL AI Evo - Circuit Assembler & Hardware Vision Architect.
 Analyzes electronic components on screen or from voice input, resolves pin-to-pin wiring,
 safety warnings, and assembly steps, and launches the Holographic Circuit HUD.
 """
@@ -355,9 +355,9 @@ def solve_circuit_with_ai(prompt: str, image_bytes: Optional[bytes] = None) -> O
 
         client = genai.Client(api_key=api_key)
         system_instruction = (
-            "You are Brahma Circuit Architect, an expert electrical engineer and embedded systems designer. "
+            "You are NIGHTFALL Circuit Architect, an expert electrical engineer and embedded systems designer. "
             "Your task is to analyze electronic components (either identified from the screen image or the user's description) "
-            "and generate a complete, safe, and accurate wiring schematic matching the Brahma Circuit HUD JSON schema. "
+            "and generate a complete, safe, and accurate wiring schematic matching the NIGHTFALL Circuit HUD JSON schema. "
             "You MUST output valid, raw JSON ONLY (no markdown formatting, no backticks, no comments). "
             "The JSON structure must be: "
             "{\n"

@@ -1,4 +1,4 @@
-{
+﻿{
     "startup_animation_enabled": false,
     "last_boot_stamp": 1789370581,
     "boot_sequence_played": true,
@@ -14,7 +14,7 @@
     "attention_message_prompts": true,
     "attention_call_prompts": true,
     "developer_mode_enabled": true,
-    "developer_mode_workspace": "C:/Users/ravit/Downloads/Brahma Uploads",
+    "developer_mode_workspace": "C:/Users/ravit/Downloads/NIGHTFALL Uploads",
     "app_theme": "#ffb300",
     "local_ai_url": "http://localhost:11434/v1",
     "local_ai_model": "qwen2.5:3b",

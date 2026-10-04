@@ -1,0 +1,18 @@
+[
+    {
+        "input": {}
+    },
+    {
+        "input": {
+            "action": "set",
+            "provider": "openrouter",
+            "api_key": "sk-or-v1-abcdef0123456789nightfallmockkey",
+            "base_url": "https://openrouter.ai/api/v1"
+        }
+    },
+    {
+        "input": {
+            "action": "status"
+        }
+    }
+]

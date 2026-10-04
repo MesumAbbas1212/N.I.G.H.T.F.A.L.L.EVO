@@ -1,5 +1,5 @@
-"""
-Brahma Protocol Execution Engine (v2)
+﻿"""
+NIGHTFALL Protocol Execution Engine (v2)
 High-level macro orchestrator that reconfigures the user's digital environment
 across PC and connected mobile devices with a single directive.
 """
@@ -47,7 +47,7 @@ class ProtocolEngine:
     def execute_deep_work(self, params: Dict[str, Any]) -> str:
         """
         Maximizes focus:
-        - Sets Brahma behavior mode to minimal.
+        - Sets NIGHTFALL behavior mode to minimal.
         - Minimizes distracting applications.
         """
         identity.set_behavior_mode("minimal")

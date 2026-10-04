@@ -1,7 +1,7 @@
-"""
+﻿"""
 Feature: show_headphones_image
 Description: Displays an image of headphones on the screen when requested.
-Autonomous Evolutionary Capability synthesized by Brahma AI.
+Autonomous Evolutionary Capability synthesized by NIGHTFALL AI.
 """
 
 FEATURE_METADATA = {'name': 'show_headphones_image', 'aliases': ['show headphones', 'display headphones', 'headphones image', 'showheadphonesimage'], 'description': 'Displays an image of headphones on the screen when requested.', 'triggers': ['show headphones', 'display headphones', 'headphones image', 'show a headphone img on screen when i ask "show headphones"', 'show headphones image'], 'parameters': {}, 'created_at': 1790774585.897451, 'version': '1.0.0', 'author': 'Project Ultron Autonomous Self-Evolution Engine', 'active': True}
@@ -15,10 +15,10 @@ import numpy as np
 def execute(**kwargs):
     """
     Renders and displays a sleek high-fidelity headphones visual deliverable
-    on the Brahma Evo HUD screen.
+    on the NIGHTFALL Evo HUD screen.
     """
     try:
-        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
         os.makedirs(output_dir, exist_ok=True)
         image_path = os.path.join(output_dir, 'headphones_image.png')
 
@@ -54,7 +54,7 @@ def execute(**kwargs):
         wave_y = 0.9 + 0.15 * np.sin(wave_x * 12)
         ax.plot(wave_x, wave_y, color='#10B981', linewidth=2, alpha=0.9)
 
-        ax.text(0, 0.3, 'BRAHMA EVO // AUDIO INTELLIGENCE', color='#38BDF8', fontsize=10, fontweight='bold', ha='center')
+        ax.text(0, 0.3, 'NIGHTFALL EVO // AUDIO INTELLIGENCE', color='#38BDF8', fontsize=10, fontweight='bold', ha='center')
         ax.text(0, 0.0, 'PRO WIRELESS STUDIO HEADPHONES', color='#FFFFFF', fontsize=12, fontweight='bold', ha='center')
         ax.text(0, -0.3, 'Active Noise Cancellation 98%  |  Lossless Audio 24-bit/192kHz', color='#94A3B8', fontsize=8, ha='center')
 

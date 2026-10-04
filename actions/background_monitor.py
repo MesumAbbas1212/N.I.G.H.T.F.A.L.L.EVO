@@ -1,6 +1,6 @@
-# actions/background_monitor.py
+﻿# actions/background_monitor.py
 """
-Background Monitor Action for Brahma AI.
+Background Monitor Action for NIGHTFALL AI.
 
 Allows the AI to schedule background polling for system health, crypto prices, or website uptime.
 """

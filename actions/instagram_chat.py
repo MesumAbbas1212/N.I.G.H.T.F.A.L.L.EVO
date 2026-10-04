@@ -1,9 +1,9 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 # actions/instagram_chat.py
 """
-Instagram Chat Integration for Brahma AI.
+Instagram Chat Integration for NIGHTFALL AI.
 
-Listens for incoming DMs on Instagram and replies using Brahma's core generation.
+Listens for incoming DMs on Instagram and replies using NIGHTFALL's core generation.
 """
 
 import threading

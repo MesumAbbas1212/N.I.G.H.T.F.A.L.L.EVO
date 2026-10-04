@@ -1,7 +1,7 @@
-"""
+﻿"""
 Feature: system_monitor_ascii
 Description: Monitors and displays current CPU and RAM utilization using ASCII progress bars. Useful for quick system resource checks.
-Autonomous Evolutionary Capability synthesized by Brahma AI.
+Autonomous Evolutionary Capability synthesized by NIGHTFALL AI.
 """
 
 FEATURE_METADATA = {'name': 'system_monitor_ascii', 'aliases': ['monitor system', 'system status', 'resource usage', 'systemmonitorascii'], 'description': 'Monitors and displays current CPU and RAM utilization using ASCII progress bars. Useful for quick system resource checks.', 'triggers': ['monitor system', 'system status', 'resource usage', 'show cpu and ram', 'what is my system load', 'Monitor CPU and RAM load and display an ASCII visual progress bar for both CPU utilization and RAM usage.', 'monitor cpu and ram load and display an ascii visual progress bar for both cpu utilization and ram usage.', 'system monitor ascii'], 'parameters': {}, 'created_at': 1790779504.7412686, 'version': '1.0.0', 'author': 'Project Ultron Autonomous Self-Evolution Engine', 'active': True}

@@ -1,0 +1,123 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - button "Navigation menu" [ref=e12]
+        - link "WhatsApp's homepage" [ref=e18] [cursor=pointer]:
+          - /url: https://www.whatsapp.com/
+          - img "WhatsApp.com" [ref=e20]
+        - link "Get WhatsApp from Microsoft" [ref=e27] [cursor=pointer]:
+          - /url: https://get.microsoft.com/installer/download/9NKSQGP7F2NH?cid=website_cta_psi
+          - generic [ref=e28]: Download
+    - generic [ref=e39]:
+      - heading [level=2] [ref=e41]:
+        - paragraph [ref=e42]: Chat on WhatsApp with +92 308 0808770
+      - generic [ref=e43]:
+        - link "Open app" [ref=e44] [cursor=pointer]:
+          - /url: https://web.whatsapp.com/send/?phone=923080808770&text&type=phone_number&app_absent=0
+        - link "Continue to WhatsApp Web" [ref=e46] [cursor=pointer]:
+          - /url: https://web.whatsapp.com/send/?phone=923080808770&text&type=phone_number&app_absent=0
+        - generic [ref=e48]:
+          - heading "Don't have the app?" [level=4] [ref=e54]
+          - heading [level=4] [ref=e55]:
+            - link "Get WhatsApp from Microsoft" [ref=e56] [cursor=pointer]:
+              - /url: https://get.microsoft.com/installer/download/9NKSQGP7F2NH?cid=wa_api_v2
+              - text: Download it now
+  - contentinfo [ref=e59]:
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - link "WhatsApp's homepage" [ref=e63] [cursor=pointer]:
+          - /url: https://www.whatsapp.com/
+          - img "WhatsApp Main Logo" [ref=e65]
+        - link "Download" [ref=e67] [cursor=pointer]:
+          - /url: https://www.whatsapp.com/dl
+      - generic [ref=e73]:
+        - heading "What we do" [level=4] [ref=e76]
+        - list [ref=e77]:
+          - listitem [ref=e78]:
+            - link "Features" [ref=e79] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/calling
+          - listitem [ref=e82]:
+            - link "WhatsApp Blogs for our latest announcements" [ref=e83] [cursor=pointer]:
+              - /url: https://blog.whatsapp.com/
+              - generic [ref=e84]: Blog
+          - listitem [ref=e86]:
+            - link "WhatsApp's security features" [ref=e87] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/security
+              - generic [ref=e88]: Security
+          - listitem [ref=e90]:
+            - link "For Business" [ref=e91] [cursor=pointer]:
+              - /url: https://whatsappbusiness.com/
+      - generic [ref=e94]:
+        - heading "Who we are" [level=4] [ref=e97]
+        - list [ref=e98]:
+          - listitem [ref=e99]:
+            - link "WhatsApp's mission statement" [ref=e100] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/about
+              - generic [ref=e101]: About us
+          - listitem [ref=e103]:
+            - link "Careers" [ref=e104] [cursor=pointer]:
+              - /url: https://www.metacareers.com/jobs?divisions[0]=WhatsApp
+          - listitem [ref=e107]:
+            - link "Visit WhatsApp's brand center" [ref=e108] [cursor=pointer]:
+              - /url: https://www.facebook.com/brand/resources/whatsapp/whatsapp-brand
+              - generic [ref=e109]: Brand Center
+          - listitem [ref=e111]:
+            - link "WhatsApp's privacy features" [ref=e112] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/privacy
+              - generic [ref=e113]: Privacy
+      - generic [ref=e115]:
+        - heading "Use WhatsApp" [level=4] [ref=e118]
+        - list [ref=e119]:
+          - listitem [ref=e120]:
+            - link "Mobile" [ref=e121] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/download/mobile
+          - listitem [ref=e124]:
+            - link "Desktop" [ref=e125] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/download/desktop
+          - listitem [ref=e128]:
+            - link "Tablet" [ref=e129] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/download/tablet
+          - listitem [ref=e132]:
+            - link "Login to WhatsApp Web" [ref=e133] [cursor=pointer]:
+              - /url: https://web.whatsapp.com/
+              - generic [ref=e134]: WhatsApp Web
+      - generic [ref=e136]:
+        - heading "Need help?" [level=4] [ref=e139]
+        - list [ref=e140]:
+          - listitem [ref=e141]:
+            - link "Get WhatsApp support" [ref=e142] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/contact
+              - generic [ref=e143]: Contact Us
+          - listitem [ref=e145]:
+            - link "WhatsApp Help Center homepage" [ref=e146] [cursor=pointer]:
+              - /url: https://faq.whatsapp.com/
+              - generic [ref=e147]: Help Center
+          - listitem [ref=e149]:
+            - link "Download WhatsApp" [ref=e150] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/download
+              - generic [ref=e151]: Apps
+          - listitem [ref=e153]:
+            - link "WhatsApp's latest security advisories" [ref=e154] [cursor=pointer]:
+              - /url: https://www.whatsapp.com/security/advisories
+              - generic [ref=e155]: Security Advisories
+    - generic [ref=e158]:
+      - generic [ref=e160]:
+        - paragraph [ref=e162]: 2026 © WhatsApp LLC
+        - link "WhatsApp legal policies" [ref=e163] [cursor=pointer]:
+          - /url: https://www.whatsapp.com/legal/
+          - generic [ref=e164]: Terms & Privacy Policy
+        - link "Sitemap" [ref=e167] [cursor=pointer]:
+          - /url: https://www.whatsapp.com/sitemap
+      - generic [ref=e169]:
+        - link "Twitter" [ref=e170] [cursor=pointer]:
+          - /url: https://x.com/whatsapp
+        - link "Youtube" [ref=e173] [cursor=pointer]:
+          - /url: https://www.youtube.com/channel/UCAuerig2N-RZWJT8x75V9yw
+        - link "Instagram" [ref=e176] [cursor=pointer]:
+          - /url: https://www.instagram.com/whatsapp/?hl=en
+        - link "Facebook" [ref=e179] [cursor=pointer]:
+          - /url: https://www.facebook.com/profile.php?id=100064758844406
+        - link "Threads" [ref=e182] [cursor=pointer]:
+          - /url: https://www.threads.com/@whatsapp
+      - button "English" [ref=e187] [cursor=pointer]

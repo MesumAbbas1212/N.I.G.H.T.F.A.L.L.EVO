@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 import json
 import re
 import sys
@@ -119,7 +119,7 @@ def generate_presentation_from_prompt(user_prompt: str, player=None, speak: Opti
         clean_title = clean_title.title() or "Presentation Overview"
         data = {
             "title": clean_title,
-            "subtitle": "Prepared by Brahma AI",
+            "subtitle": "Prepared by NIGHTFALL AI",
             "theme": "corporate",
             "slides": [
                 {
@@ -146,7 +146,7 @@ def generate_presentation_from_prompt(user_prompt: str, player=None, speak: Opti
             ]
         }
 
-    title = data.get("title") or "Brahma Presentation"
+    title = data.get("title") or "NIGHTFALL Presentation"
     subtitle = data.get("subtitle") or ""
     theme = data.get("theme") or "corporate"
     slides = data.get("slides") or []
@@ -210,7 +210,7 @@ def generate_spreadsheet_from_prompt(user_prompt: str, player=None, speak: Optio
             }]
         }
 
-    title = data.get("title") or "Brahma Workbook"
+    title = data.get("title") or "NIGHTFALL Workbook"
     worksheets = data.get("worksheets") or data.get("sheets") or []
 
     result = create_spreadsheet({

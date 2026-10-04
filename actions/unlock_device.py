@@ -1,8 +1,8 @@
-# actions/unlock_device.py
+﻿# actions/unlock_device.py
 
 import json
 from pathlib import Path
-from actions.brahma_connect import connect_execute
+from actions.nightfall_connect import connect_execute
 
 def _get_settings() -> dict:
     try:
@@ -35,7 +35,7 @@ def unlock_device(parameters: dict, response=None, player=None, session_memory=N
     # If not found, try to resolve the device to get its actual ID from connect gateway
     if not pin:
         try:
-            from actions.brahma_connect import connect_get_device
+            from actions.nightfall_connect import connect_get_device
             res_str = connect_get_device({"target": target})
             res_dict = json.loads(res_str)
             if res_dict.get("success"):
@@ -48,7 +48,7 @@ def unlock_device(parameters: dict, response=None, player=None, session_memory=N
     if not pin:
         return f"Error: No unlock PIN is saved for device '{target}'. Please set the PIN in the UI first."
         
-    # Send unlock command via brahma connect
+    # Send unlock command via NIGHTFALL connect
     command_params = {
         "target": target,
         "action": "unlock_phone",

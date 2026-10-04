@@ -1,5 +1,5 @@
-"""
-Active Window & Foreground Application Context for Brahma AI.
+﻿"""
+Active Window & Foreground Application Context for NIGHTFALL AI.
 Uses Windows Win32 APIs via ctypes to inspect the user's current focused application,
 window title, and capture targeted screenshots of the active workspace.
 """

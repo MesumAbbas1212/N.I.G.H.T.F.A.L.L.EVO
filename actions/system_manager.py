@@ -1,6 +1,6 @@
-# actions/system_manager.py
+﻿# actions/system_manager.py
 """
-System Health & Resource Manager for Brahma AI.
+System Health & Resource Manager for NIGHTFALL AI.
 
 Allows the AI to check CPU, RAM, battery, and top processes, 
 as well as forcibly close non-responsive or resource-hogging apps.

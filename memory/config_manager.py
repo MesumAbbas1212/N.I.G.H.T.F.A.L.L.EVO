@@ -1,5 +1,5 @@
-"""
-memory/config_manager.py - Centralized configuration access for Brahma AI.
+﻿"""
+memory/config_manager.py - Centralized configuration access for NIGHTFALL AI.
 Handles persistent app settings, audio device selection, push-to-talk,
 and AI options. Backed by config/app_settings.json.
 """

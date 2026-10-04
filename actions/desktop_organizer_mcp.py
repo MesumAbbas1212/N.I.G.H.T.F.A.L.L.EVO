@@ -1,7 +1,7 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 # actions/desktop_organizer_mcp.py
 """
-Smart Desktop & Downloads Organizer MCP for Brahma AI.
+Smart Desktop & Downloads Organizer MCP for NIGHTFALL AI.
 Provides safe, intelligent file classification, dry-run previews,
 full transaction rollback (undo), duplicate detection, and cleanup.
 """
@@ -29,10 +29,10 @@ HISTORY_FILE = CONFIG_DIR / "organizer_history.json"
 PROTECTED_EXTENSIONS = {".lnk", ".url", ".sys", ".dll"}
 PROTECTED_FILENAMES = {
     "desktop.ini", "thumbs.db", ".ds_store",
-    "brahma_history.json", "organizer_history.json",
+    "NIGHTFALL_history.json", "organizer_history.json",
     "email_credentials.json", ".email_key", "api_keys.json"
 }
-PROTECTED_DIR_PREFIXES = (".", "brahmaprojects", ".brahma", ".git", ".venv", "node_modules", "$recycle.bin")
+PROTECTED_DIR_PREFIXES = (".", "NIGHTFALLprojects", ".NIGHTFALL", ".git", ".venv", "node_modules", "$recycle.bin")
 
 # ── Categorization Rules ───────────────────────────────────────────────────
 

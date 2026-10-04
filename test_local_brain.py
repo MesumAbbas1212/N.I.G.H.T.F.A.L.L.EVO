@@ -1,5 +1,5 @@
-"""
-Test script for Brahma Local Brain Engine (v2)
+﻿"""
+Test script for NIGHTFALL Local Brain Engine (v2)
 Verifies local LLM server availability, models listing, and test completion.
 """
 
@@ -7,7 +7,7 @@ import sys
 from core.local_brain import local_brain
 
 print("=" * 60)
-print("  BRAHMA EVO v2: LOCAL BRAIN TEST")
+print("  NIGHTFALL EVO v2: LOCAL BRAIN TEST")
 print("=" * 60)
 
 available = local_brain.is_available()
@@ -23,7 +23,7 @@ if available:
         try:
             res = local_brain.chat_complete(
                 messages=[
-                    {"role": "system", "content": "You are Brahma Evo, a concise desktop AI."},
+                    {"role": "system", "content": "You are NIGHTFALL Evo, a concise desktop AI."},
                     {"role": "user", "content": "Introduce yourself in one punchy sentence."}
                 ],
                 model=test_model

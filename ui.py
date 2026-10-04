@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from core.user_paths import get_user_data_dir
 
 import asyncio
@@ -57,7 +57,7 @@ except Exception:
 from discord_bot import DiscordBotService
 from gesture_utils import estimate_gesture_state, GestureTracker
 from smart_home import SmartHomeService
-from smart_home_page_new import BrahmaHomePage, _DeviceTile
+from smart_home_page_new import NIGHTFALLHomePage, _DeviceTile
 from core.local_brain import local_brain
 from workspace_store import store as workspace_store
 from core.identity import identity
@@ -73,8 +73,8 @@ CONFIG_DIR = get_user_data_dir() / "config"
 API_FILE   = CONFIG_DIR / "api_keys.json"
 APP_SETTINGS_FILE = CONFIG_DIR / "app_settings.json"
 DISCORD_SETTINGS_FILE = CONFIG_DIR / "discord_bot.json"
-LOGO_FILE  = BASE_DIR / "assets" / "Brahma_Lite_Logo.png"
-LOGO_ICO   = BASE_DIR / "assets" / "Brahma_Lite_Logo.ico"
+LOGO_FILE  = BASE_DIR / "assets" / "NIGHTFALL_Lite_Logo.png"
+LOGO_ICO   = BASE_DIR / "assets" / "NIGHTFALL_Lite_Logo.ico"
 BACKGROUND_IMAGE_FILE = BASE_DIR / "assets" / "background.png"
 MODEL_DOWNLOAD_URL = "https://storage.googleapis.com/mediapipe-assets/hand_landmarker.task"
 
@@ -318,7 +318,7 @@ class BackgroundWidget(QWidget):
                 st = (state or "IDLE").strip().replace("'", "\\'")
                 page = self._web_view.page()
                 if page:
-                    page.runJavaScript(f"if(window.setBrahmaState) window.setBrahmaState('{st}');")
+                    page.runJavaScript(f"if(window.setNIGHTFALLState) window.setNIGHTFALLState('{st}');")
             except Exception:
                 pass
 
@@ -436,7 +436,7 @@ class RemoteKeyOverlay(QWidget):
         title.setStyleSheet("color: #ffffff; background: transparent; border: none;")
         lay.addWidget(title)
 
-        subtitle = QLabel("Scan the QR code with your phone to remotely control Brahma Evo.")
+        subtitle = QLabel("Scan the QR code with your phone to remotely control NIGHTFALL Evo.")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setWordWrap(True)
         subtitle.setFont(QFont("Segoe UI", 9))
@@ -592,7 +592,7 @@ class RemoteKeyOverlay(QWidget):
         self._qr_label.setText("OK")
         self._qr_label.setFont(QFont("Segoe UI", 34, QFont.Weight.Black))
         self._qr_label.setStyleSheet("color: #37ff5f; background: #041006; border-radius: 12px;")
-        self._timer_lbl.setText("Phone connected. Brahma Evo remote is ready.")
+        self._timer_lbl.setText("Phone connected. NIGHTFALL Evo remote is ready.")
 
     def _refresh_key(self):
         if not self._on_new_key:
@@ -685,7 +685,7 @@ class DailyBriefingOverlay(QWidget):
         hdr_info = QVBoxLayout()
         hdr_info.setSpacing(2)
 
-        title_lbl = QLabel("⚡ BRAHMA INTELLIGENCE // UNIFIED MORNING BRIEFING")
+        title_lbl = QLabel("⚡ NIGHTFALL INTELLIGENCE // UNIFIED MORNING BRIEFING")
         title_lbl.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         title_lbl.setStyleSheet(f"color: {C.PRI}; letter-spacing: 1.5px; background: transparent; border: none;")
         hdr_info.addWidget(title_lbl)
@@ -1168,7 +1168,7 @@ class MemoryInspectorOverlay(QWidget):
 
         from memory.memory_manager import all_entries_for_ui
 
-        hdr = QLabel("🧠  WHAT BRAHMA REMEMBERS")
+        hdr = QLabel("🧠  WHAT NIGHTFALL REMEMBERS")
         hdr.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         hdr.setStyleSheet(f"color: {C.PRI}; background: transparent; letter-spacing: 0.5px;")
         self._lay.addWidget(hdr)
@@ -1184,7 +1184,7 @@ class MemoryInspectorOverlay(QWidget):
 
         cap = QLabel(
             f"{len(rows)} stored memory entries. Stored locally in memory/long_term.json. "
-            f"Brahma recalls these during relevant conversations."
+            f"NIGHTFALL recalls these during relevant conversations."
         )
         cap.setWordWrap(True)
         cap.setFont(QFont("Segoe UI", 8))
@@ -2496,7 +2496,7 @@ class TaskCard(QFrame):
         self._command_lbl.setStyleSheet(f"color: {C.WHITE}; background: transparent;")
         lay.addWidget(self._command_lbl)
 
-        self._plan_lbl = QLabel("Plan: Brahma Evo will generate a task plan after you send a command.")
+        self._plan_lbl = QLabel("Plan: NIGHTFALL Evo will generate a task plan after you send a command.")
         self._plan_lbl.setWordWrap(True)
         self._plan_lbl.setFont(QFont("Segoe UI", 9))
         self._plan_lbl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
@@ -2548,7 +2548,7 @@ class TaskCard(QFrame):
         self._title.setText(title)
         self._status_lbl.setText(desc)
         self._output_lbl.setText(desc)
-        self._plan_lbl.setText("Plan: Brahma Evo will generate a task plan after you send a command.")
+        self._plan_lbl.setText("Plan: NIGHTFALL Evo will generate a task plan after you send a command.")
         self._command_lbl.setText("Command: waiting for input")
         self._pct.setText(f"{percent}%")
         self._bar.setValue(max(0, min(100, percent)))
@@ -2617,7 +2617,7 @@ class TaskCard(QFrame):
         self._workspace_locked = False
         self._title.setText("Ready")
         self._command_lbl.setText("Command: waiting for input")
-        self._plan_lbl.setText("Plan: Brahma Evo will generate a task plan after you send a command.")
+        self._plan_lbl.setText("Plan: NIGHTFALL Evo will generate a task plan after you send a command.")
         self._status_lbl.setText("Status: Idle")
         self._output_lbl.setText("Output: Ready to work.")
         self._pct.setText("0%")
@@ -2867,7 +2867,7 @@ class ChatBubble(QFrame):
         if role == "assistant":
             avatar = _framed_logo(24, 24, bg="rgba(12,14,20,245)", border="rgba(0, 229, 255,0.50)", radius=12, inset=4)
             head.addWidget(avatar)
-            name_lbl = QLabel(name or "Brahma Evo")
+            name_lbl = QLabel(name or "NIGHTFALL Evo")
             name_lbl.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             name_lbl.setStyleSheet("color: #ffffff; background: transparent;")
             head.addWidget(name_lbl)
@@ -3055,7 +3055,7 @@ class ConversationFeed(QScrollArea):
         lay = QVBoxLayout(frame)
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(10)
-        title = QLabel("Try asking Brahma Evo")
+        title = QLabel("Try asking NIGHTFALL Evo")
         title.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         title.setStyleSheet("color: #ffffff; background: transparent;")
         subtitle = QLabel("Create a presentation, analyze a screen, build a website, organize files, or run browser automation.")
@@ -3168,10 +3168,10 @@ class ConversationFeed(QScrollArea):
             attachments = msg.get("attachments") or []
             name = {
                 "user": "You",
-                "assistant": "Brahma Evo",
+                "assistant": "NIGHTFALL Evo",
                 "system": "System",
                 "file": "Files",
-            }.get(role, "Brahma Evo")
+            }.get(role, "NIGHTFALL Evo")
             self.add_message(role, name, content, stamp, attachments=attachments, animate=False)
         self._sync_empty_state()
         QTimer.singleShot(0, self.scroll_to_bottom)
@@ -3364,7 +3364,7 @@ class WorkspaceSidebar(QWidget):
 
         header = QHBoxLayout()
         header.setSpacing(10)
-        self._title = QLabel("BRAHMA EVO WORKSPACE")
+        self._title = QLabel("NIGHTFALL EVO WORKSPACE")
         self._title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         self._title.setStyleSheet("color: #FFFFFF; background: transparent; letter-spacing: 1px;")
         header.addWidget(self._title)
@@ -3527,7 +3527,7 @@ class WorkspaceSidebar(QWidget):
         input_row.addWidget(self._attach_btn)
 
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Message Brahma Evo...")
+        self._input.setPlaceholderText("Message NIGHTFALL Evo...")
         self._input.setFont(QFont("Segoe UI", 10))
         self._input.setStyleSheet(
             f"QLineEdit {{ background: transparent; color: {C.WHITE}; border: none; padding: 2px 4px; selection-background-color: rgba(0, 229, 255, 0.25); }}"
@@ -3860,7 +3860,7 @@ class WorkspaceSidebar(QWidget):
         if not raw:
             return
         low = raw.lower()
-        if low.startswith(("you:", "brahma evo:")):
+        if low.startswith(("you:", "nightfall evo:")):
             return
         if low.startswith("sys:"):
             self.record_chat_event({"role": "system", "text": raw.split(":", 1)[1].strip(), "source": "local"})
@@ -3883,7 +3883,7 @@ class WorkspaceSidebar(QWidget):
         elif role == "assistant":
             convo_id = self._store.record_chat("assistant", text, conversation_id=convo_id, attachments=attachments)
             self._active_conversation_id = convo_id
-            self._feed.add_message("assistant", "Brahma Evo", text, _fmt_time_stamp(stamp), attachments=attachments, animate=True)
+            self._feed.add_message("assistant", "NIGHTFALL Evo", text, _fmt_time_stamp(stamp), attachments=attachments, animate=True)
             self._hide_memory_banner()
         elif role == "system":
             convo_id = self._store.record_chat("system", text, conversation_id=convo_id, attachments=attachments)
@@ -4113,7 +4113,7 @@ class InlineChatWorkspace(QFrame):
         input_row.addWidget(self._attach_btn)
 
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Message Brahma Evo...")
+        self._input.setPlaceholderText("Message NIGHTFALL Evo...")
         self._input.setFont(QFont("Segoe UI", 10))
         self._input.setStyleSheet(
             f"QLineEdit {{ background: transparent; color: {C.WHITE}; border: none; padding: 0 4px; selection-background-color: rgba(0, 229, 255, 0.25); }}"
@@ -4147,7 +4147,7 @@ class InlineChatWorkspace(QFrame):
 
         footer = QHBoxLayout()
         footer.setContentsMargins(4, 2, 4, 2)
-        self._footer_status = QLabel("Brahma Evo is ready")
+        self._footer_status = QLabel("NIGHTFALL Evo is ready")
         self._footer_status.setFont(QFont("Segoe UI", 8))
         self._footer_status.setStyleSheet("color: rgba(255, 255, 255, 0.55); background: transparent;")
         footer.addWidget(self._footer_status)
@@ -4164,12 +4164,12 @@ class InlineChatWorkspace(QFrame):
         if hasattr(self, "_footer_status") and self._footer_status:
             status_text = {
                 "listening": "Listening to your voice...",
-                "speaking": "Brahma Evo is speaking...",
+                "speaking": "NIGHTFALL Evo is speaking...",
                 "thinking": "Synthesizing response...",
                 "executing": "Executing task...",
                 "working": "Processing request...",
                 "muted": "Microphone muted",
-            }.get((state or "").lower(), "Brahma Evo is ready")
+            }.get((state or "").lower(), "NIGHTFALL Evo is ready")
             self._footer_status.setText(status_text)
 
     def _build_history_tab(self) -> QWidget:
@@ -4294,7 +4294,7 @@ class InlineChatWorkspace(QFrame):
             self._show_memories(self._store.search_memories(text))
         elif role == "assistant":
             self._store.record_chat("assistant", text, conversation_id=convo_id, attachments=attachments)
-            self._feed.add_message("assistant", "Brahma Evo", text, stamp, attachments=attachments)
+            self._feed.add_message("assistant", "NIGHTFALL Evo", text, stamp, attachments=attachments)
             self._hide_memories()
         elif role == "system":
             self._store.record_chat("system", text, conversation_id=convo_id, attachments=attachments)
@@ -4311,7 +4311,7 @@ class InlineChatWorkspace(QFrame):
         low = raw.lower()
         if low.startswith("you:"):
             self.record_chat_event({"role": "user", "text": raw.split(":", 1)[1].strip()})
-        elif low.startswith("brahma evo:"):
+        elif low.startswith("NIGHTFALL evo:"):
             self.record_chat_event({"role": "assistant", "text": raw.split(":", 1)[1].strip()})
         elif low.startswith("sys:"):
             self.record_chat_event({"role": "system", "text": raw.split(":", 1)[1].strip()})
@@ -4422,7 +4422,7 @@ class LauncherControlPanel(QDialog):
         lay.setContentsMargins(18, 16, 18, 16)
         lay.setSpacing(10)
 
-        title = QLabel("BRAHMA EVO CONTROL")
+        title = QLabel("NIGHTFALL EVO CONTROL")
         title.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         title.setStyleSheet("color: #FFFFFF; background: transparent; letter-spacing: 1px;")
         lay.addWidget(title)
@@ -4464,8 +4464,8 @@ class LauncherControlPanel(QDialog):
         self._startup_btn = mk_btn("Show Workspace On Startup", checkable=True, checked=bool(startup_workspace))
         self._show_icon_btn = mk_btn("Show Floating Icon")
         self._hide_icon_btn = mk_btn("Hide Floating Icon")
-        self._restart_btn = mk_btn("Restart Brahma Evo")
-        self._quit_btn = mk_btn("Quit Brahma Evo")
+        self._restart_btn = mk_btn("Restart NIGHTFALL Evo")
+        self._quit_btn = mk_btn("Quit NIGHTFALL Evo")
         self._open_app_btn = mk_btn("Open App")
         self._open_dev_btn = mk_btn("Open Developer Mode")
 
@@ -4508,7 +4508,7 @@ class LauncherControlPanel(QDialog):
         flay = QVBoxLayout(frame)
         flay.setContentsMargins(18, 16, 18, 16)
         flay.setSpacing(10)
-        lbl = QLabel("Hide Brahma Evo icon?")
+        lbl = QLabel("Hide NIGHTFALL Evo icon?")
         lbl.setStyleSheet("color: #FFFFFF; background: transparent; font: 700 11pt 'Segoe UI';")
         sub = QLabel("You can restore it from the system tray.")
         sub.setStyleSheet("color: rgba(255,255,255,0.65); background: transparent;")
@@ -4566,15 +4566,15 @@ class SmallPanelCard(QFrame):
         self._body_lbl.setStyleSheet(f"color: {accent}; background: transparent;")
         lay.addWidget(self._body_lbl)
 
-class BrahmaTelemetryWing(QFrame):
+class NIGHTFALLTelemetryWing(QFrame):
     """
-    Brahma Right Wing: Live Operations, Research Streams, and Sources.
+    NIGHTFALL Right Wing: Live Operations, Research Streams, and Sources.
     Auto-dismisses in 10 seconds unless pinned or hovered.
     Adapts dynamically to the active theme color (Amber Gold by default).
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("BrahmaTelemetryWing")
+        self.setObjectName("NIGHTFALLTelemetryWing")
         self.setFixedWidth(310)
         self.setMinimumHeight(320)
         self.setMaximumHeight(520)
@@ -4702,7 +4702,7 @@ class BrahmaTelemetryWing(QFrame):
         self._theme_rgb = (r, g, b)
 
         self.setStyleSheet(f"""
-            QFrame#BrahmaTelemetryWing {{
+            QFrame#NIGHTFALLTelemetryWing {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(10, 15, 24, 238),
                     stop:0.6 rgba(6, 10, 18, 222),
@@ -4879,16 +4879,16 @@ class BrahmaTelemetryWing(QFrame):
         self._anim.start()
 
 
-class BrahmaResultWing(QFrame):
+class NIGHTFALLResultWing(QFrame):
     """
-    Brahma Left Wing: Final Results, Generated Deliverables (PDF/Word/Media/Code),
+    NIGHTFALL Left Wing: Final Results, Generated Deliverables (PDF/Word/Media/Code),
     Executive Summary Bullets, and Quick Action Buttons.
     Auto-dismisses in 10 seconds unless pinned or hovered.
     Adapts dynamically to the active theme color (Amber Gold by default).
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("BrahmaResultWing")
+        self.setObjectName("NIGHTFALLResultWing")
         self.setFixedWidth(310)
         self.setMinimumHeight(320)
         self.setMaximumHeight(540)
@@ -5040,7 +5040,7 @@ class BrahmaResultWing(QFrame):
         self._theme_rgb = (r, g, b)
 
         self.setStyleSheet(f"""
-            QFrame#BrahmaResultWing {{
+            QFrame#NIGHTFALLResultWing {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(14, 18, 26, 240),
                     stop:0.6 rgba(9, 13, 20, 225),
@@ -5236,7 +5236,7 @@ class BrahmaResultWing(QFrame):
                         import subprocess
                         subprocess.Popen(["xdg-open", str(p)])
                 except Exception as e:
-                    print(f"[BrahmaResultWing] Open file error: {e}")
+                    print(f"[NIGHTFALLResultWing] Open file error: {e}")
 
     def _on_reveal_clicked(self):
         if self._active_file_path:
@@ -5251,7 +5251,7 @@ class BrahmaResultWing(QFrame):
                 else:
                     subprocess.Popen(["xdg-open", str(p.parent)])
             except Exception as e:
-                print(f"[BrahmaResultWing] Reveal error: {e}")
+                print(f"[NIGHTFALLResultWing] Reveal error: {e}")
 
     def set_body(self, text: str):
         if hasattr(self, "_summary_lbl") and text:
@@ -5382,10 +5382,10 @@ class LogWidget(QScrollArea):
         tl = raw.lower()
         if tl.startswith("you:"):
             return "user", "You", raw[4:].strip()
-        if tl.startswith("brahma evo:"):
-            return "assistant", "Brahma Evo", raw[len("Brahma Evo:"):].strip()
-        if tl.startswith("brahma evo:"):
-            return "assistant", "Brahma Evo", raw[len("Brahma Evo:"):].strip()
+        if tl.startswith("NIGHTFALL evo:"):
+            return "assistant", "NIGHTFALL Evo", raw[len("NIGHTFALL Evo:"):].strip()
+        if tl.startswith("NIGHTFALL evo:"):
+            return "assistant", "NIGHTFALL Evo", raw[len("NIGHTFALL Evo:"):].strip()
         if tl.startswith("file:"):
             return "file", "File", raw[5:].strip()
         if tl.startswith("err:"):
@@ -5490,7 +5490,7 @@ class FileDropZone(QWidget):
 
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select a file for Brahma Evo", str(Path.home()),
+            self, "Select a file for NIGHTFALL Evo", str(Path.home()),
             "All Files (*.*);;"
             "Images (*.jpg *.jpeg *.png *.gif *.webp *.bmp *.svg);;"
             "Documents (*.pdf *.docx *.txt *.md *.pptx);;"
@@ -5806,8 +5806,8 @@ class SetupOverlay(QWidget):
         self._stack.addWidget(page)
 
     def _save_identity_and_next(self):
-        identity.set_assistant_name(self._inp_ast.text().strip() or "Brahma")
-        identity.set_application_name(self._inp_app.text().strip() or "Brahma Evo")
+        identity.set_assistant_name(self._inp_ast.text().strip() or "NIGHTFALL")
+        identity.set_application_name(self._inp_app.text().strip() or "NIGHTFALL Evo")
         self._stack.setCurrentIndex(2)
 
     # ── STAGE 1.2: Owner Profile ────────────────────────────────
@@ -6180,10 +6180,10 @@ class SetupOverlay(QWidget):
         intro_lay.setSpacing(12)
 
         self._intro_lines = []
-        for txt in ["Identity confirmed.", "Hello.", "I'm Brahma Evo.", "Ready whenever you are."]:
+        for txt in ["Identity confirmed.", "Hello.", "I'm NIGHTFALL Evo.", "Ready whenever you are."]:
             lbl = QLabel(txt)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            if txt == "I'm Brahma Evo.":
+            if txt == "I'm NIGHTFALL Evo.":
                 lbl.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
                 lbl.setStyleSheet("color: #00e5ff; background: transparent; border: none;")
             else:
@@ -6195,7 +6195,7 @@ class SetupOverlay(QWidget):
 
         intro_lay.addSpacing(20)
 
-        self._launch_btn = QPushButton("Launch Brahma Evo →")
+        self._launch_btn = QPushButton("Launch NIGHTFALL Evo →")
         self._launch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._launch_btn.setFixedSize(220, 48)
         self._launch_btn.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
@@ -6542,7 +6542,7 @@ class SetupOverlay(QWidget):
         self._show_intro_final()
 
     def _show_intro_final(self):
-        """Show the Brahma Evo intro sequence."""
+        """Show the NIGHTFALL Evo intro sequence."""
         page = self._stack.widget(6)
         lay = page.layout()
         self._intro_widget.setParent(None)
@@ -6706,7 +6706,7 @@ class CommandBar(QWidget):
         lay.setContentsMargins(6, 4, 6, 4)
         lay.setSpacing(6)
 
-        # Brahma Evo mini logo
+        # NIGHTFALL Evo mini logo
         logo_frame = QFrame()
         logo_frame.setFixedSize(32, 32)
         logo_frame.setStyleSheet("""
@@ -6718,7 +6718,7 @@ class CommandBar(QWidget):
         """)
         logo_lay = QVBoxLayout(logo_frame)
         logo_lay.setContentsMargins(0, 0, 0, 0)
-        logo_lbl = QLabel("\u092C\u094D\u0930")  # ब्र (short Hindi)
+        logo_lbl = QLabel("NF")  # ब्र (short Hindi)
         logo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_lbl.setFont(QFont("Nirmala UI", 9, QFont.Weight.Bold))
         logo_lbl.setStyleSheet("color: #00e5ff; background: transparent; border: none;")
@@ -6727,7 +6727,7 @@ class CommandBar(QWidget):
 
         # Input field
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Tell Brahma Evo what to do...")
+        self._input.setPlaceholderText("Tell NIGHTFALL Evo what to do...")
         self._input.setFont(QFont("Segoe UI", 9))
         self._input.setFixedHeight(32)
         self._input.setStyleSheet(f"""
@@ -6907,7 +6907,7 @@ class DeveloperModeDialog(QDialog):
         title.setStyleSheet(f"color: {C.PRI};")
         root.addWidget(title)
 
-        desc = QLabel("Pick a workspace folder Brahma Evo should use when building websites or other workspace-based tasks.")
+        desc = QLabel("Pick a workspace folder NIGHTFALL Evo should use when building websites or other workspace-based tasks.")
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {C.TEXT_DIM};")
         root.addWidget(desc)
@@ -7634,7 +7634,7 @@ class BootSequenceOverlay(QWidget):
                     painter.drawEllipse(QPointF(s['x'], s['y']), s['size'], s['size'])
 
             # -------------------------------------------------------------
-            # 3. DRAW "BRAHMA" TEXT & TYPOGRAPHY EFFECT
+            # 3. DRAW "NIGHTFALL" TEXT & TYPOGRAPHY EFFECT
             # -------------------------------------------------------------
             if self._time >= 1.35:
                 text_t = min(1.0, (self._time - 1.35) / 0.45)
@@ -7643,17 +7643,17 @@ class BootSequenceOverlay(QWidget):
                 spacing_prog = min(1.0, (self._time - 1.35) / 1.5)
                 letter_spacing = 10.0 + (spacing_prog * 14.0)
 
-                font_brahma = QFont("Segoe UI", 56, QFont.Weight.Black)
-                font_brahma.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, letter_spacing)
-                painter.setFont(font_brahma)
+                font_NIGHTFALL = QFont("Segoe UI", 56, QFont.Weight.Black)
+                font_NIGHTFALL.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, letter_spacing)
+                painter.setFont(font_NIGHTFALL)
 
-                rect_brahma = QRectF(cx - 500, cy - 85, 1000, 90)
+                rect_NIGHTFALL = QRectF(cx - 500, cy - 85, 1000, 90)
 
                 # Outer text cyan glow
                 glow_col = QColor(0, 240, 255, int(text_alpha * 0.45))
                 painter.setPen(glow_col)
                 for ox, oy in [(-2, 0), (2, 0), (0, -2), (0, 2), (-1, -1), (1, 1)]:
-                    painter.drawText(rect_brahma.translated(ox, oy), Qt.AlignmentFlag.AlignCenter, "BRAHMA")
+                    painter.drawText(rect_NIGHTFALL.translated(ox, oy), Qt.AlignmentFlag.AlignCenter, "NIGHTFALL")
 
                 # Core white text with dynamic shimmer
                 if 1.8 <= self._time < 2.5:
@@ -7668,7 +7668,7 @@ class BootSequenceOverlay(QWidget):
                 else:
                     painter.setPen(QColor(255, 255, 255, text_alpha))
 
-                painter.drawText(rect_brahma, Qt.AlignmentFlag.AlignCenter, "BRAHMA")
+                painter.drawText(rect_NIGHTFALL, Qt.AlignmentFlag.AlignCenter, "NIGHTFALL")
 
             # -------------------------------------------------------------
             # 4. DRAW "AI - EVO" WITH MAXIMUM IMPACT (>= 2.5s)
@@ -7974,7 +7974,7 @@ class MeetingOverlay(QWidget):
         self._speech.setStyleSheet(f"color: {C.WHITE}; background: transparent;")
         lay.addWidget(self._speech)
 
-        self._answer = QLabel("Brahma Evo will show the live answer here.")
+        self._answer = QLabel("NIGHTFALL Evo will show the live answer here.")
         self._answer.setWordWrap(True)
         self._answer.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         self._answer.setStyleSheet(f"color: {C.WHITE}; background: transparent;")
@@ -8240,16 +8240,16 @@ class FloatingLauncher(QWidget):
                 painter.setBrush(QBrush(QColor(head_c.red(), head_c.green(), head_c.blue(), head_alpha)))
                 painter.drawEllipse(QPointF(hx, hy), 1.6, 1.6)
 
-        # ── 6. Emblem: Hindi "ब्रह्मा" + Status Dot with Parallax ──
+        # ── 6. Emblem: Hindi "NF" + Status Dot with Parallax ──
         text_alpha = min(255, int((215 + breath * 40) * hover_boost))
         painter.setPen(QPen(QColor(0, 0, 0, 180)))
         painter.setFont(QFont("Nirmala UI", 11, QFont.Weight.Bold))
-        painter.drawText(QRectF(cx - 21.0 + gx, cy - 13.0 + gy, 44.0, 22.0), Qt.AlignmentFlag.AlignCenter, "\u092C\u094D\u0930\u0939\u094D\u092E\u093E")
+        painter.drawText(QRectF(cx - 21.0 + gx, cy - 13.0 + gy, 44.0, 22.0), Qt.AlignmentFlag.AlignCenter, "NF")
 
         # Crisp glowing text
         painter.setPen(QPen(QColor(ar, ag, ab, text_alpha)))
         painter.setFont(QFont("Nirmala UI", 11, QFont.Weight.Bold))
-        painter.drawText(QRectF(cx - 22.0 + gx, cy - 14.0 + gy, 44.0, 22.0), Qt.AlignmentFlag.AlignCenter, "\u092C\u094D\u0930\u0939\u094D\u092E\u093E")
+        painter.drawText(QRectF(cx - 22.0 + gx, cy - 14.0 + gy, 44.0, 22.0), Qt.AlignmentFlag.AlignCenter, "NF")
 
         # Tiny breathing status beacon directly below text
         dot_alpha = min(255, int((150 + breath * 105) * hover_boost))
@@ -8304,7 +8304,7 @@ class FloatingLauncher(QWidget):
 
     def _apply_state_style(self):
         self.setToolTip(
-            f"Brahma Evo ({self._status_line})\n"
+            f"NIGHTFALL Evo ({self._status_line})\n"
             "• Single-click: Chat Workspace\n"
             "• Double-click: Open Full App\n"
             "• Drag: Move (Spring Snap)"
@@ -8338,7 +8338,7 @@ class FloatingLauncher(QWidget):
             }}
         """)
 
-        open_full = QAction("Open Brahma Evo (Full App)", self)
+        open_full = QAction("Open NIGHTFALL Evo (Full App)", self)
         open_full.triggered.connect(lambda: self.action_requested.emit("open_app"))
         menu.addAction(open_full)
 
@@ -8362,7 +8362,7 @@ class FloatingLauncher(QWidget):
         hide_act.triggered.connect(self.hide)
         menu.addAction(hide_act)
 
-        quit_act = QAction("Quit Brahma", self)
+        quit_act = QAction("Quit NIGHTFALL", self)
         quit_act.triggered.connect(lambda: self.action_requested.emit("quit"))
         menu.addAction(quit_act)
 
@@ -8529,7 +8529,7 @@ class MainWindow(QMainWindow):
         self.setWindowFlag(Qt.WindowType.Tool, False)
         self.setWindowFlag(Qt.WindowType.Window, True)
         self.setWindowIcon(self._make_window_icon())
-        self.setWindowTitle("Brahma Evo")
+        self.setWindowTitle("NIGHTFALL Evo")
         self.setMinimumSize(_MIN_W, _MIN_H)
         self.resize(_DEFAULT_W, _DEFAULT_H)
 
@@ -8893,10 +8893,10 @@ class MainWindow(QMainWindow):
                 winreg.KEY_READ | winreg.KEY_WRITE,
             ) as key:
                 try:
-                    value, _ = winreg.QueryValueEx(key, "Brahma Evo")
+                    value, _ = winreg.QueryValueEx(key, "NIGHTFALL Evo")
                     run_value = _startup_run_value()
                     if value != run_value:
-                        winreg.SetValueEx(key, "Brahma Evo", 0, winreg.REG_SZ, run_value)
+                        winreg.SetValueEx(key, "NIGHTFALL Evo", 0, winreg.REG_SZ, run_value)
                     return bool(value)
                 except FileNotFoundError:
                     return False
@@ -8910,10 +8910,10 @@ class MainWindow(QMainWindow):
         try:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _startup_registry_key()) as key:
                 if enabled:
-                    winreg.SetValueEx(key, "Brahma Evo", 0, winreg.REG_SZ, run_value)
+                    winreg.SetValueEx(key, "NIGHTFALL Evo", 0, winreg.REG_SZ, run_value)
                 else:
                     try:
-                        winreg.DeleteValue(key, "Brahma Evo")
+                        winreg.DeleteValue(key, "NIGHTFALL Evo")
                     except FileNotFoundError:
                         pass
             return True
@@ -9065,8 +9065,8 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-    def set_brahma_connect_service(self, service):
-        self._brahma_connect = service
+    def set_nightfall_connect_service(self, service):
+        self._nightfall_connect = service
         if hasattr(self, "_devices_page"):
             self._devices_page.set_service(service)
             if service is not None:
@@ -9203,7 +9203,7 @@ class MainWindow(QMainWindow):
 
     def _browse_attachment(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Attach a file to Brahma Evo", str(Path.home()),
+            self, "Attach a file to NIGHTFALL Evo", str(Path.home()),
             "All Files (*.*);;"
             "Images (*.jpg *.jpeg *.png *.gif *.webp *.bmp *.svg);;"
             "Documents (*.pdf *.docx *.txt *.md *.pptx);;"
@@ -9305,7 +9305,7 @@ class MainWindow(QMainWindow):
                     self.on_chat_event({"role": "user", "text": user_msg, "source": source})
                 except Exception:
                     pass
-        if hasattr(self, "_result_card") and low.startswith("brahma evo:"):
+        if hasattr(self, "_result_card") and low.startswith("nightfall evo:"):
             reply = raw.split(":", 1)[1].strip()
             self._result_card.set_body(reply[:80] + ("…" if len(reply) > 80 else ""))
             self._result_card.hide()
@@ -9509,7 +9509,7 @@ class MainWindow(QMainWindow):
             self._call_screening_dialog.close()
 
         dialog = QDialog(self)
-        dialog.setWindowTitle("Brahma Evo Call Screening")
+        dialog.setWindowTitle("NIGHTFALL Evo Call Screening")
         dialog.setModal(False)
         dialog.setMinimumWidth(380)
         layout = QVBoxLayout(dialog)
@@ -9653,7 +9653,7 @@ class MainWindow(QMainWindow):
     def notify_phone_connected(self):
         if self._remote_overlay is not None:
             self._remote_overlay.mark_connected()
-        self._log_sig.emit("SYS: Phone connected to Brahma Evo remote.")
+        self._log_sig.emit("SYS: Phone connected to NIGHTFALL Evo remote.")
 
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
@@ -9720,21 +9720,21 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_input"):
             ph_map = {
                 "LISTENING": "Listening... (or type your command)",
-                "SPEAKING": "Brahma Evo is responding...",
-                "THINKING": "Brahma is thinking...",
+                "SPEAKING": "NIGHTFALL Evo is responding...",
+                "THINKING": "NIGHTFALL is thinking...",
                 "PROCESSING": "Processing request...",
                 "EXECUTING": "Executing action...",
                 "WORKING": "Working on it...",
                 "MUTED": "Microphone muted — type command here...",
                 "SCANNING": "Scanning display...",
             }
-            self._input.setPlaceholderText(ph_map.get(state, "Ask Brahma Evo anything..."))
+            self._input.setPlaceholderText(ph_map.get(state, "Ask NIGHTFALL Evo anything..."))
 
         # Update chat workspace footer status
         if hasattr(self, "_inline_workspace") and hasattr(self._inline_workspace, "_footer_status"):
             foot_map = {
                 "LISTENING": "● Listening for voice command...",
-                "SPEAKING": "● Brahma is speaking...",
+                "SPEAKING": "● NIGHTFALL is speaking...",
                 "THINKING": "● Thinking...",
                 "PROCESSING": "● Processing...",
                 "EXECUTING": "● Executing system command...",
@@ -9742,7 +9742,7 @@ class MainWindow(QMainWindow):
                 "MUTED": "● Voice input muted",
                 "SCANNING": "● Vision system active",
             }
-            self._inline_workspace._footer_status.setText(foot_map.get(state, "Brahma Evo is online"))
+            self._inline_workspace._footer_status.setText(foot_map.get(state, "NIGHTFALL Evo is online"))
 
         if hasattr(self, "_status_chip"):
             chip_text = {
@@ -9768,13 +9768,13 @@ class MainWindow(QMainWindow):
             )
         if hasattr(self, "_task_card"):
             if state in ("THINKING", "PROCESSING", "EXECUTING", "WORKING"):
-                self._task_card.set_task("Working on it...", "Brahma Evo is processing your request.", 72)
+                self._task_card.set_task("Working on it...", "NIGHTFALL Evo is processing your request.", 72)
             elif state == "SPEAKING":
-                self._task_card.set_task("Responding...", "Brahma Evo is speaking now.", 100)
+                self._task_card.set_task("Responding...", "NIGHTFALL Evo is speaking now.", 100)
             elif state == "MUTED":
                 self._task_card.set_task("Microphone muted", "Voice input is paused.", 0)
             else:
-                self._task_card.set_task("Ready", "Brahma Evo is idle and ready.", 0)
+                self._task_card.set_task("Ready", "NIGHTFALL Evo is idle and ready.", 0)
         if hasattr(self, "_result_card"):
             if state in ("THINKING", "PROCESSING", "EXECUTING", "WORKING"):
                 self._result_card.set_body("Action pending")
@@ -10026,7 +10026,7 @@ class MainWindow(QMainWindow):
                 self._floating_gesture_card.show()
             self.showNormal()
             self._apply_state("LISTENING")
-            self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. Brahma Evo online.")
+            self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. NIGHTFALL Evo online.")
         except Exception as e:
             self._log.append_log(f"ERR: setup failed: {e}")
             traceback.print_exc()
@@ -10070,8 +10070,8 @@ class MainWindow(QMainWindow):
         self._developer_card.hide()
         self._developer_status_lbl = QLabel(self._hidden_legacy_container)
 
-        self._hud_result_wing = BrahmaResultWing(self)
-        self._hud_telemetry_wing = BrahmaTelemetryWing(self)
+        self._hud_result_wing = NIGHTFALLResultWing(self)
+        self._hud_telemetry_wing = NIGHTFALLTelemetryWing(self)
         self._command_card = self._hud_result_wing
         self._result_card = self._hud_telemetry_wing
 
@@ -10110,8 +10110,8 @@ class MainWindow(QMainWindow):
         cmd_lay.addLayout(self._build_command_row())
         stage.addWidget(self._command_panel)
 
-        self._home_page = BrahmaHomePage()
-        self._devices_page = BrahmaConnectDevicesPage(self)
+        self._home_page = NIGHTFALLHomePage()
+        self._devices_page = NIGHTFALLConnectDevicesPage(self)
         self._center_stack = QStackedWidget()
         self._center_stack.setStyleSheet("background: transparent; border: none;")
         self._center_stack.addWidget(w)
@@ -10151,7 +10151,7 @@ class MainWindow(QMainWindow):
         pulse_dot.setStyleSheet("color: #37ff5f; background: transparent;")
         header_bar.addWidget(pulse_dot)
 
-        header_title = QLabel("BRAHMA CHAT")
+        header_title = QLabel("NIGHTFALL CHAT")
         header_title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         header_title.setStyleSheet(f"color: {C.WHITE}; background: transparent; letter-spacing: 1px;")
         header_bar.addWidget(header_title)
@@ -10241,7 +10241,7 @@ class MainWindow(QMainWindow):
         row.setSpacing(12)
 
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Ask Brahma Evo anything...")
+        self._input.setPlaceholderText("Ask NIGHTFALL Evo anything...")
         self._input.setFont(QFont("Segoe UI", 10))
         self._input.setFixedHeight(50)
         self._input.setStyleSheet(f"""
@@ -10405,7 +10405,7 @@ class SystemConnectivitySidebar(QFrame):
         self._quick_actions = QVBoxLayout()
         self._quick_actions.setSpacing(10)
         lay.addLayout(self._quick_actions)
-        self._mk_quick_action("Γå╗ Restart Brahma Evo", QStyle.StandardPixmap.SP_BrowserReload, self._restart)
+        self._mk_quick_action("Γå╗ Restart NIGHTFALL Evo", QStyle.StandardPixmap.SP_BrowserReload, self._restart)
         self._mk_quick_action("Γƒ│ Reload Configuration", QStyle.StandardPixmap.SP_BrowserReload, self._reload)
         self._mk_quick_action("≡ƒôü Open Data Folder", QStyle.StandardPixmap.SP_DirOpenIcon, self._open_data_folder)
         self._mk_quick_action("≡ƒôä View Logs", QStyle.StandardPixmap.SP_FileDialogDetailedView, self._view_logs)
@@ -10504,7 +10504,7 @@ class SettingsHubPage(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
 
-        subtitle = QLabel("Select a section below to configure your Brahma Evo environment.")
+        subtitle = QLabel("Select a section below to configure your NIGHTFALL Evo environment.")
         subtitle.setFont(QFont("Segoe UI", 12))
         subtitle.setStyleSheet(f"color: {C.TEXT_DIM};")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -10515,7 +10515,7 @@ class SettingsHubPage(QWidget):
         cards_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         cards_data = [
-            ("Brahma Evo Home", "Configure smart home integrations", "🏠", 1),
+            ("NIGHTFALL Evo Home", "Configure smart home integrations", "🏠", 1),
             ("Devices", "Manage and control connected hardware", "🔌", 2),
             ("System & Connect", "Configure providers and api preferences", "⚙️", 3)
         ]
@@ -10879,7 +10879,7 @@ class SystemConnectivityPage(QWidget):
 
 
         # Instagram Connect
-        ig_card = self._card("Instagram Connect", "Connect your personal Instagram account to allow Brahma Evo to manage your DMs.")
+        ig_card = self._card("Instagram Connect", "Connect your personal Instagram account to allow NIGHTFALL Evo to manage your DMs.")
         ig_lay = ig_card.layout()
 
         self._ig_status_lbl = QLabel("Status: Checking...")
@@ -11019,14 +11019,14 @@ class SystemConnectivityPage(QWidget):
         ast_row = QHBoxLayout()
         ast_row.addWidget(QLabel("Assistant Name"))
         self._set_ast_name = QLineEdit(identity.get_assistant_name())
-        self._set_ast_name.textChanged.connect(lambda t: identity.set_assistant_name(t.strip() or "Brahma"))
+        self._set_ast_name.textChanged.connect(lambda t: identity.set_assistant_name(t.strip() or "NIGHTFALL"))
         ast_row.addWidget(self._set_ast_name)
         ilay.addLayout(ast_row)
         
         app_row = QHBoxLayout()
         app_row.addWidget(QLabel("Application Name"))
         self._set_app_name = QLineEdit(identity.get_application_name())
-        self._set_app_name.textChanged.connect(lambda t: identity.set_application_name(t.strip() or "Brahma Evo"))
+        self._set_app_name.textChanged.connect(lambda t: identity.set_application_name(t.strip() or "NIGHTFALL Evo"))
         app_row.addWidget(self._set_app_name)
         ilay.addLayout(app_row)
 
@@ -11178,7 +11178,7 @@ class SystemConnectivityPage(QWidget):
         lay.addWidget(card)
 
         # Mobile connect
-        mobile = self._card("Mobile Connect", "Connect your phone and control Brahma Evo remotely.")
+        mobile = self._card("Mobile Connect", "Connect your phone and control NIGHTFALL Evo remotely.")
         ml = mobile.layout()
         self._mobile_status = QLabel("Connection Status: Ready")
         self._mobile_phone = QLabel("Phone Name: Not connected")
@@ -11217,9 +11217,9 @@ class SystemConnectivityPage(QWidget):
         lay.addWidget(attention)
 
         # Startup
-        startup = self._card("Startup", "Use Brahma Evo with Windows startup preferences.")
+        startup = self._card("Startup", "Use NIGHTFALL Evo with Windows startup preferences.")
         sl = startup.layout()
-        self._startup_launch_btn = self._mk_toggle("Launch Brahma Evo when Windows starts", bool(self._load_app_settings().get("show_workspace_on_startup", False)), self._toggle_startup_from_page)
+        self._startup_launch_btn = self._mk_toggle("Launch NIGHTFALL Evo when Windows starts", bool(self._load_app_settings().get("show_workspace_on_startup", False)), self._toggle_startup_from_page)
         self._startup_minimized_btn = self._mk_toggle("Launch Minimized", bool(self._load_app_settings().get("launch_minimized", False)), self._toggle_launch_minimized)
         self._startup_updates_btn = self._mk_toggle("Check for updates on startup", bool(self._load_app_settings().get("check_updates_on_startup", True)), self._toggle_update_check)
         sl.addWidget(self._startup_launch_btn)
@@ -11228,7 +11228,7 @@ class SystemConnectivityPage(QWidget):
         lay.addWidget(startup)
 
         # Shortcuts & Pinning
-        shortcuts = self._card("Shortcuts & Pinning", "Create shortcuts and pin Brahma Evo to your Windows system.")
+        shortcuts = self._card("Shortcuts & Pinning", "Create shortcuts and pin NIGHTFALL Evo to your Windows system.")
         shl = shortcuts.layout()
         
         btn_row = QHBoxLayout()
@@ -11245,7 +11245,7 @@ class SystemConnectivityPage(QWidget):
         lay.addWidget(shortcuts)
 
         # App Theme
-        theme_card = self._card("App Theme", "Select the primary color theme for Brahma Evo.")
+        theme_card = self._card("App Theme", "Select the primary color theme for NIGHTFALL Evo.")
         tl = theme_card.layout()
         theme_row = QHBoxLayout()
         theme_row.addWidget(QLabel("Primary Color:"))
@@ -11293,7 +11293,7 @@ class SystemConnectivityPage(QWidget):
         al.addWidget(self._preview_progress)
         lay.addWidget(anim)
         # Discord bot
-        discord = self._card("Discord Bot", "Mirror Brahma Evo between the app and your server.")
+        discord = self._card("Discord Bot", "Mirror NIGHTFALL Evo between the app and your server.")
         dl = discord.layout()
         self._discord_defaults = self._load_discord_settings()
         self._discord_status = QLabel("Bot Status: Offline")
@@ -11328,7 +11328,7 @@ class SystemConnectivityPage(QWidget):
         dl.addWidget(self._discord_msg)
         lay.addWidget(discord)
 
-        about = self._card("About Brahma Evo", "Brahma Evo information only.")
+        about = self._card("About NIGHTFALL Evo", "NIGHTFALL Evo information only.")
         ab = about.layout()
         about_grid = QGridLayout()
         about_grid.setHorizontalSpacing(22)
@@ -11384,7 +11384,7 @@ class SystemConnectivityPage(QWidget):
 
         rule_input_row = QHBoxLayout()
         self._ah_rule_input = QLineEdit()
-        self._ah_rule_input.setPlaceholderText("Teach Brahma a rule (e.g. Always summarize in bullet points)")
+        self._ah_rule_input.setPlaceholderText("Teach NIGHTFALL a rule (e.g. Always summarize in bullet points)")
         rule_input_row.addWidget(self._ah_rule_input)
         self._ah_learn_btn = QPushButton("Teach Rule")
         self._ah_learn_btn.clicked.connect(self._handle_ah_learn_rule)
@@ -11402,7 +11402,7 @@ class SystemConnectivityPage(QWidget):
         except Exception:
             pass
 
-        # Brahma Audio Routing & Hardware Controls
+        # NIGHTFALL Audio Routing & Hardware Controls
         audio_card = self._card("Audio Routing & Hardware Controls", "Select hardware audio interfaces, toggle Push-to-Talk, or inspect long-term memory.")
         alay = audio_card.layout()
 
@@ -11724,7 +11724,7 @@ class SystemConnectivityPage(QWidget):
         self._update_ig_status()
         from PyQt6.QtWidgets import QMessageBox
         name_str = f" as @{detected_username}" if detected_username else ""
-        QMessageBox.information(self, "Instagram Connected", f"Instagram successfully connected via Browser{name_str}!\n\nBrahma is now active for voice DM notifications and instant direct replies.")
+        QMessageBox.information(self, "Instagram Connected", f"Instagram successfully connected via Browser{name_str}!\n\nNIGHTFALL is now active for voice DM notifications and instant direct replies.")
 
     def _ig_browser_error(self, err_msg):
         self._ig_browser_btn.setEnabled(True)
@@ -12099,7 +12099,7 @@ class SystemConnectivityPage(QWidget):
             "Steps to complete:\n"
             "1. Log in to Spotify in the browser window.\n"
             "2. Click 'Agree' to grant playback permissions.\n"
-            "3. Once redirected to callback, Brahma Evo will automatically detect authorization!"
+            "3. Once redirected to callback, NIGHTFALL Evo will automatically detect authorization!"
         )
 
     def _poll_spotify_auth_status(self):
@@ -12300,7 +12300,7 @@ class SystemConnectivityPage(QWidget):
             AutoHealEngine.record_last_error(tb)
             self._ah_output_lbl.setText(
                 f"❌ Simulated bug triggered in test_action.py: {type(e).__name__}: {e}\n"
-                f"Traceback captured in AutoHealEngine! Click 'Fix Captured Bug' or say 'Brahma, fix that bug'."
+                f"Traceback captured in AutoHealEngine! Click 'Fix Captured Bug' or say 'NIGHTFALL, fix that bug'."
             )
 
     def _handle_ah_fix_captured_bug(self):
@@ -12377,7 +12377,7 @@ class SystemConnectivityPage(QWidget):
         box = self._card("Quick Actions", "")
         lay = box.layout()
         actions = [
-            ("Restart Brahma Evo", QStyle.StandardPixmap.SP_BrowserReload, self._restart_app),
+            ("Restart NIGHTFALL Evo", QStyle.StandardPixmap.SP_BrowserReload, self._restart_app),
             ("Reload Configuration", QStyle.StandardPixmap.SP_BrowserReload, self._reload_config),
             ("Open Data Folder", QStyle.StandardPixmap.SP_DirOpenIcon, self._open_data_folder),
             ("View Logs", QStyle.StandardPixmap.SP_FileDialogDetailedView, self._view_logs),
@@ -12637,7 +12637,7 @@ class SystemConnectivityPage(QWidget):
             self._ctrl()._win._start_discord_bot()
             self._ctrl()._win._stop_discord_bot()
             self._discord_status.setText("Bot Status: Test sent")
-            self._discord_msg.setText("Connected as Brahma Evo#9649" if self._discord_token.text().strip() else "Bot Offline")
+            self._discord_msg.setText("Connected as NIGHTFALL Evo#9649" if self._discord_token.text().strip() else "Bot Offline")
 
     def _restart_discord_from_page(self):
         if self._ctrl() and hasattr(self._ctrl(), "_win"):
@@ -12744,7 +12744,7 @@ class SystemConnectivityPage(QWidget):
         token = (discord.get("bot_token") or "").strip()
         if enabled and token:
             self._discord_status.setText("Bot Status: Online")
-            self._discord_msg.setText("Connected as Brahma Evo#9649")
+            self._discord_msg.setText("Connected as NIGHTFALL Evo#9649")
         elif token:
             self._discord_status.setText("Bot Status: Offline")
             self._discord_msg.setText("Bot Offline")
@@ -12801,12 +12801,12 @@ class SystemConnectivityPage(QWidget):
                 desktop_dir = Path(os.path.expanduser("~")) / "Desktop"
                 
             desktop_dir.mkdir(parents=True, exist_ok=True)
-            shortcut_path = desktop_dir / "Brahma Evo - Premium.lnk"
+            shortcut_path = desktop_dir / "NIGHTFALL Evo - Premium.lnk"
             
             # Base variables
             base_dir = Path(os.path.abspath("."))
             script_path = base_dir / "main.py"
-            icon_path = base_dir / "assets" / "Brahma_Lite_Logo.ico"
+            icon_path = base_dir / "assets" / "NIGHTFALL_Lite_Logo.ico"
             
             python_exe = sys.executable
             if not python_exe:
@@ -12831,7 +12831,7 @@ class SystemConnectivityPage(QWidget):
                 f"$Shortcut.Arguments = '{_ps_escape(shortcut_args)}'",
                 f"$Shortcut.WorkingDirectory = '{_ps_escape(str(base_dir))}'",
                 "$Shortcut.WindowStyle = 7",
-                "$Shortcut.Description = 'Launch Brahma Evo - Premium'",
+                "$Shortcut.Description = 'Launch NIGHTFALL Evo - Premium'",
                 f"if ('{_ps_escape(icon_value)}') {{ $Shortcut.IconLocation = '{_ps_escape(icon_value)},0' }}",
                 "$Shortcut.Save()",
             ])
@@ -12891,9 +12891,9 @@ class SystemConnectivityPage(QWidget):
             )
             
             if res.returncode == 0:
-                return True, "Brahma Evo has been pinned to your Taskbar!"
+                return True, "NIGHTFALL Evo has been pinned to your Taskbar!"
             else:
-                return False, "Windows restricts programmatic taskbar pinning. Please right-click the 'Brahma Evo - Premium.lnk' shortcut on your Desktop and select 'Pin to taskbar', or drag it directly onto your taskbar."
+                return False, "Windows restricts programmatic taskbar pinning. Please right-click the 'NIGHTFALL Evo - Premium.lnk' shortcut on your Desktop and select 'Pin to taskbar', or drag it directly onto your taskbar."
         except Exception as e:
             return False, f"Error pinning to taskbar: {e}"
 
@@ -12977,7 +12977,7 @@ class SmartDevicesSection(QFrame):
                 background: rgba(0, 229, 255,0.16);
             }}
         """)
-        self._open_home_btn.clicked.connect(self._open_brahma_home)
+        self._open_home_btn.clicked.connect(self._open_NIGHTFALL_home)
         header.addWidget(self._open_home_btn)
         root.addLayout(header)
 
@@ -12995,7 +12995,7 @@ class SmartDevicesSection(QFrame):
         empty_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_desc.setFont(QFont("Segoe UI", 8))
         empty_desc.setStyleSheet(f"color: {C.TEXT_DIM};")
-        empty_btn = QPushButton("Open Brahma Evo Home")
+        empty_btn = QPushButton("Open NIGHTFALL Evo Home")
         empty_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         empty_btn.setFixedWidth(160)
         empty_btn.setStyleSheet(f"""
@@ -13010,7 +13010,7 @@ class SmartDevicesSection(QFrame):
                 background: rgba(0, 229, 255,0.18);
             }}
         """)
-        empty_btn.clicked.connect(self._open_brahma_home)
+        empty_btn.clicked.connect(self._open_NIGHTFALL_home)
         empty_lay.addStretch(1)
         empty_lay.addWidget(empty_title)
         empty_lay.addWidget(empty_desc)
@@ -13121,7 +13121,7 @@ class SmartDevicesSection(QFrame):
     def _controller_bridge(self):
         return self._controller
 
-    def _open_brahma_home(self):
+    def _open_NIGHTFALL_home(self):
         bridge = self._controller_bridge()
         if bridge and hasattr(bridge, "_set_page"):
             bridge._set_page("home")
@@ -13550,7 +13550,7 @@ class _ConnectDeviceCard(QFrame):
         super().mouseReleaseEvent(event)
 
 
-class BrahmaConnectDevicesPage(QFrame):
+class NIGHTFALLConnectDevicesPage(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._service = None
@@ -13561,9 +13561,9 @@ class BrahmaConnectDevicesPage(QFrame):
         self._selected_device_id: str | None = None
         self._onboarding_known_device_ids: set[str] = set()
 
-        self.setObjectName("BrahmaConnectDevicesPage")
+        self.setObjectName("NIGHTFALLConnectDevicesPage")
         self.setStyleSheet(f"""
-            QFrame#BrahmaConnectDevicesPage {{
+            QFrame#NIGHTFALLConnectDevicesPage {{
                 background: transparent;
                 border: none;
             }}
@@ -13583,7 +13583,7 @@ class BrahmaConnectDevicesPage(QFrame):
         self._title = QLabel("DEVICES")
         self._title.setFont(QFont("Segoe UI", 18, QFont.Weight.Black))
         self._title.setStyleSheet("color: #ffffff; letter-spacing: 2px;")
-        self._subtitle = QLabel("Everything connected to Brahma.")
+        self._subtitle = QLabel("Everything connected to NIGHTFALL.")
         self._subtitle.setFont(QFont("Segoe UI", 9))
         self._subtitle.setStyleSheet("color: rgba(255,255,255,0.62);")
         title_box.addWidget(self._title)
@@ -13937,7 +13937,7 @@ class BrahmaConnectDevicesPage(QFrame):
         self._onboarding_pulse = 0
 
     def _service_obj(self):
-        return self._service or getattr(self.parentWidget(), "_brahma_connect", None)
+        return self._service or getattr(self.parentWidget(), "_nightfall_connect", None)
 
     def set_service(self, service):
         self._service = service
@@ -13964,7 +13964,7 @@ class BrahmaConnectDevicesPage(QFrame):
             import io
             import qrcode
 
-            self._onboarding_offer = dict(service.create_pairing_offer(device_name="Brahma Connect", platform="gateway"))
+            self._onboarding_offer = dict(service.create_pairing_offer(device_name="NIGHTFALL Connect", platform="gateway"))
             code = str(self._onboarding_offer.get("pairing_code") or "------")
             self._onb_code_lbl.setText(code)
             self._onb_status_lbl.setText("WAITING FOR CONNECTION")
@@ -14194,12 +14194,12 @@ class _RootShim:
         pass
 
 
-class BrahmaUI:
+class NIGHTFALLUI:
     def __init__(self, face_path: str, size=None, *, show_immediately: bool = True):
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
         self._app.setQuitOnLastWindowClosed(False)
-        self._app.setApplicationDisplayName("Brahma Evo")
+        self._app.setApplicationDisplayName("NIGHTFALL Evo")
         self._app.setWindowIcon(self._make_app_icon())
         try:
             current_store = workspace_store()
@@ -14256,7 +14256,7 @@ class BrahmaUI:
         except Exception:
             pass
         self._tray = QSystemTrayIcon(self._make_app_icon(), self._app)
-        self._tray.setToolTip("Brahma Evo")
+        self._tray.setToolTip("NIGHTFALL Evo")
         self._tray.activated.connect(self._on_tray_activated)
         self._tray.setContextMenu(self._build_tray_menu())
         self._tray.show()
@@ -14293,8 +14293,8 @@ class BrahmaUI:
     def _make_app_icon(self) -> QIcon:
         return _logo_icon()
 
-    def set_brahma_connect_service(self, service):
-        self._win.set_brahma_connect_service(service)
+    def set_nightfall_connect_service(self, service):
+        self._win.set_nightfall_connect_service(service)
 
 
     
@@ -14991,7 +14991,7 @@ class BrahmaUI:
             self._win._hud_deliverable_sig.emit(payload)
 
     def show_content(self, title: str, body: str):
-        """Universal rich content presenter. Automatically routes to the Brahma Holographic Left Deliverable Wing."""
+        """Universal rich content presenter. Automatically routes to the NIGHTFALL Holographic Left Deliverable Wing."""
         import re
         file_path = None
         m = re.search(r'([A-Za-z]:\\[^\s"\'<>`\r\n]+\.(?:pdf|docx|xlsx|pptx|png|jpg|mp4|py|html|json|txt))', body)

@@ -1,0 +1,46 @@
+{
+    "name": "dynamic_api_configuration",
+    "aliases": [
+        "dynamicapiconfiguration",
+        "api_key_manager",
+        "configure_provider_keys",
+        "openrouter_config"
+    ],
+    "description": "Dynamically manages, securely stores, updates, and integrates custom API keys and provider endpoints (e.g., OpenRouter, DeepSeek, Groq, Mistral, Anthropic) into the runtime environment without restarting.",
+    "triggers": [
+        "configure api key",
+        "set openrouter key",
+        "update provider credentials",
+        "dynamic api configuration",
+        "check api credentials status",
+        "set custom ai provider",
+        "Improve system configuration management to dynamically accept and integrate custom API keys from alternative providers, specifically resolving issues like the OpenRouter key dependency encountered during skill synthesis.",
+        "improve system configuration management to dynamically accept and integrate custom api keys from alternative providers, specifically resolving issues like the openrouter key dependency encountered during skill synthesis."
+    ],
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {
+                "type": "STRING",
+                "description": "Action to perform: 'set', 'get', 'list', 'delete', or 'status'"
+            },
+            "provider": {
+                "type": "STRING",
+                "description": "Name of the API provider (e.g. 'openrouter', 'deepseek', 'groq', 'openai', 'anthropic')"
+            },
+            "api_key": {
+                "type": "STRING",
+                "description": "API key token string to store or update"
+            },
+            "base_url": {
+                "type": "STRING",
+                "description": "Optional custom API endpoint URL"
+            }
+        },
+        "required": []
+    },
+    "created_at": 1791047417.26308,
+    "version": "1.0.0",
+    "author": "Project Ultron Autonomous Self-Evolution Engine",
+    "active": true
+}

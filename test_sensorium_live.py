@@ -1,6 +1,6 @@
-"""
+﻿"""
 Interactive Sensorium Test Harness (v2)
-Runs a real-time terminal monitor that shows how Brahma passively observes your actions
+Runs a real-time terminal monitor that shows how NIGHTFALL passively observes your actions
 and triggers autonomous interjections without you saying or prompting a single word.
 """
 
@@ -21,7 +21,7 @@ def speak_proactive(text: str):
     import threading
     def _speak():
         try:
-            # 1. Official Brahma Unified Neural Voice (Edge TTS GuyNeural)
+            # 1. Official NIGHTFALL Unified Neural Voice (Edge TTS GuyNeural)
             from actions.attention_monitor import _speak_edge_native
             _speak_edge_native(text)
             return
@@ -50,12 +50,12 @@ def on_interjection(alert_type, meta):
     msg = meta.get("message", "")
     speech = meta.get("speech", msg)
     print(f"\n⚡ [AUTONOMOUS INTERJECTION - {alert_type.upper()}]: {msg}")
-    print(f"🔊 [BRAHMA SPEAKING]: \"{speech}\"\n")
+    print(f"🔊 [NIGHTFALL SPEAKING]: \"{speech}\"\n")
     speak_proactive(speech)
 
 if __name__ == "__main__":
     print("=" * 65)
-    print("  BRAHMA EVO v2: PASSIVE SENSORIUM LIVE TEST")
+    print("  NIGHTFALL EVO v2: PASSIVE SENSORIUM LIVE TEST")
     print("=" * 65)
     print("Instructions:")
     print("1. Switch between different windows (Browser, Explorer, Terminal, etc.)")
@@ -99,7 +99,7 @@ if __name__ == "__main__":
                 user_is_away = False
                 msg = f"Welcome back, sir. Your workspace on {proc} is ready."
                 print(f"\n\n✨ [PROACTIVE SPEECH TRIGGERED]: {msg}")
-                print(f"🔊 [BRAHMA SPEAKING OUT LOUD NOW...]\n")
+                print(f"🔊 [NIGHTFALL SPEAKING OUT LOUD NOW...]\n")
                 speak_proactive(msg)
 
             # Step 3: Focus streak demo (15s continuous in window)

@@ -1,4 +1,4 @@
-"""Check for and apply fast-forward updates from the Brahma GitHub repository."""
+﻿"""Check for and apply fast-forward updates from the NIGHTFALL GitHub repository."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-REMOTE = "https://github.com/titechprabhasolutions/Brahma---personal.git"
+REMOTE = "https://github.com/titechprabhasolutions/NIGHTFALL---personal.git"
 BRANCH = "main"
 
 
@@ -25,7 +25,7 @@ def _run_git(base_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def update_from_github(base_dir: Path) -> bool:
     """Update a clean Git checkout and return whether the app should restart."""
-    if os.environ.get("BRAHMA_SKIP_UPDATE") == "1":
+    if os.environ.get("NIGHTFALL_SKIP_UPDATE") == "1":
         return False
 
     if not (base_dir / ".git").exists():

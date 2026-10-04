@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 import json
 import re
 import sys
@@ -60,10 +60,10 @@ def _run_skill_forge(
 
     name = str(result.get("name") or skill_name or "new_feature")
     description = str(result.get("description") or "")
-    announcement = f"⚡ [Brahma Evo] Synthesized and activated feature '{name}'. {description}".strip()
+    announcement = f"⚡ [NIGHTFALL Evo] Synthesized and activated feature '{name}'. {description}".strip()
 
     if player and hasattr(player, "write_log"):
-        player.write_log(f"Brahma Evo: {announcement}")
+        player.write_log(f"NIGHTFALL Evo: {announcement}")
 
     # Immediately execute the newly forged skill to satisfy the user's initial goal
     execution_output = ""
@@ -416,8 +416,8 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None, player: Any 
         event = {"title": p.get("caller") or "Incoming call", "app": p.get("app") or "Phone / Call"}
         return request(
             "start-call-screening",
-            "Answer this call as Brahma Evo",
-            f"Brahma will answer {event['title']} in {event['app']} and prepare a transcript and summary.",
+            "Answer this call as NIGHTFALL Evo",
+            f"NIGHTFALL will answer {event['title']} in {event['app']} and prepare a transcript and summary.",
             lambda: (start_call_proxy(event, ui=player, speak_fn=speak) and "Call screening started."),
         )
 
@@ -428,7 +428,7 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None, player: Any 
             return "Installed skills: " + ", ".join(item["name"] for item in DynamicToolRegistry.list_skills())
         goal = str(p.get("goal", "")).strip()
         if not goal:
-            return "Describe the capability you want Brahma to learn."
+            return "Describe the capability you want NIGHTFALL to learn."
         return _run_skill_forge(
             goal=goal,
             skill_name=p.get("skill_name"),
@@ -451,7 +451,7 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None, player: Any 
         else:
             out_str = str(run_res).strip()
         if player and hasattr(player, "write_log"):
-            player.write_log(f"Brahma Evo [{name}]:\n{out_str}")
+            player.write_log(f"NIGHTFALL Evo [{name}]:\n{out_str}")
         return out_str
 
     else:
@@ -464,7 +464,7 @@ def _call_tool(tool: str, parameters: dict, speak: Callable | None, player: Any 
                 else:
                     out_str = str(run_res).strip()
                 if player and hasattr(player, "write_log"):
-                    player.write_log(f"Brahma Evo [{tool}]:\n{out_str}")
+                    player.write_log(f"NIGHTFALL Evo [{tool}]:\n{out_str}")
                 return out_str
         except Exception as exc:
             return f"Feature '{tool}' failed: {exc}"

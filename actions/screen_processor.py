@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 import asyncio
 import base64
 import io
@@ -42,10 +42,10 @@ IMG_MAX_H = 360
 JPEG_Q    = 55
 
 SYSTEM_PROMPT = (
-    "You are Brahma AI - Lite, an open-source assistant. "
+    "You are NIGHTFALL AI - Lite, an open-source assistant. "
     "Analyze images with technical precision and intelligence. "
     "Help the user in a way they can understand — don't be overly complex. "
-    "Be concise, smart, and helpful like Brahma AI, personal assistant to User. "
+    "Be concise, smart, and helpful like NIGHTFALL AI, personal assistant to User. "
     "Respond in maximum 2 short sentences. Speed is priority. "
     "Address the user as 'sir' for a tone of respect. "
     "Ask if the user needs any further help with their problem."
@@ -287,7 +287,7 @@ class _LiveSession:
                     if transcript_buf and self._player:
                         full = re.sub(r'\s+', ' ', " ".join(transcript_buf)).strip()
                         if full:
-                            self._player.write_log(f"Brahma AI: {full}")
+                            self._player.write_log(f"NIGHTFALL AI: {full}")
                             print(f"[ScreenProcess] [MSG] {full}")
                             if hasattr(self._player, "set_scanning"):
                                 self._player.set_scanning(False, "")
@@ -442,7 +442,7 @@ def screen_process(
             if w_info and w_info.get("title"):
                 w_title = w_info.get("title", "").strip()
                 w_class = w_info.get("class_name", "").strip()
-                if w_title and "brahma" not in w_title.lower():
+                if w_title and "NIGHTFALL" not in w_title.lower():
                     context_tag = f"\n[User's Active Focused Application: \"{w_title}\" (Class: {w_class})]"
                     if context_tag not in user_text:
                         user_text += context_tag

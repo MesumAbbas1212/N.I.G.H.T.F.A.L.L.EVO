@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature: flights_specific_area
 Description: Real-time flight radar tracking. Detects and displays active aircraft, callsigns, speed, altitude, and flight paths in a specific area, district, city, or over the user's local region with a live visual radar map. Call whenever the user asks about flights, planes in the sky, airlines, or air traffic.
 """
@@ -42,7 +42,7 @@ def _geocode_location(area_name: str):
 
     try:
         url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(clean_area)}&count=1"
-        req = urllib.request.Request(url, headers={'User-Agent': 'BrahmaAI-FlightRadar/1.0'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'NIGHTFALLAI-FlightRadar/1.0'})
         with urllib.request.urlopen(req, timeout=5) as r:
             data = json.loads(r.read().decode('utf-8'))
             results = data.get('results', [])
@@ -70,7 +70,7 @@ def execute(**kwargs):
            f"lamin={min_latitude}&lomin={min_longitude}&"
            f"lamax={max_latitude}&lomax={max_longitude}")
 
-    headers = {'User-Agent': 'BrahmaAI-Skill/1.0'}
+    headers = {'User-Agent': 'NIGHTFALLAI-Skill/1.0'}
     flights = []
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -123,7 +123,7 @@ def execute(**kwargs):
         ax.grid(True, linestyle='--', alpha=0.3, color='#1E293B')
         ax.legend(facecolor='#0F172A', edgecolor='#334155', loc='upper right')
 
-        deliverables_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+        deliverables_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
         os.makedirs(deliverables_dir, exist_ok=True)
         image_path = os.path.join(deliverables_dir, 'flights_radar_output.png')
         plt.savefig(image_path, bbox_inches='tight', dpi=140)

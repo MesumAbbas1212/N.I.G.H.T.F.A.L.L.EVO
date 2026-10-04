@@ -1,6 +1,6 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 """
-Brahma Evo - Cinematic Holographic Sound Effects Subsystem
+NIGHTFALL Evo - Cinematic Holographic Sound Effects Subsystem
 Provides low-latency, non-blocking sci-fi acoustics for holographic UI interactions:
 - Holographic wing deploy / aperture whoosh
 - High-tech telemetry chirp

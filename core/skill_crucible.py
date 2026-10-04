@@ -1,6 +1,6 @@
-"""
+﻿"""
 Skill Crucible: Multi-Tiered Safety Sandbox & Verification Engine
-Part of Project Ultron for Brahma AI.
+Part of Project Ultron for NIGHTFALL AI.
 
 Performs:
 1. Static AST Safety Analysis (blocks destructive OS actions).
@@ -34,7 +34,7 @@ BANNED_AST_PATTERNS = [
     # System32 destruction
     "system32",
     "syswow64",
-    # Self-destruction of Brahma AI core
+    # Self-destruction of NIGHTFALL AI core
     "boot_sentry",
     "auto_heal_engine",
     "install_wizard",

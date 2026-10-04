@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 from pathlib import Path
 from typing import Dict, Any, List
@@ -22,8 +22,8 @@ class IdentityService:
                 "about": ""
             },
             "assistant": {
-                "name": "Brahma",
-                "application_name": "Brahma Evo",
+                "name": "NIGHTFALL",
+                "application_name": "NIGHTFALL Evo",
                 "title": "Personal AI Assistant"
             },
             "behavior": {
@@ -64,16 +64,16 @@ class IdentityService:
 
     # Assistant methods
     def get_assistant_name(self) -> str:
-        val = self.data["assistant"].get("name", "Brahma")
-        return val if val is not None else "Brahma"
+        val = self.data["assistant"].get("name", "NIGHTFALL")
+        return val if val is not None else "NIGHTFALL"
         
     def set_assistant_name(self, name: str):
         self.data["assistant"]["name"] = name
         self.save()
 
     def get_application_name(self) -> str:
-        val = self.data["assistant"].get("application_name", "Brahma Evo")
-        return val if val is not None else "Brahma Evo"
+        val = self.data["assistant"].get("application_name", "NIGHTFALL Evo")
+        return val if val is not None else "NIGHTFALL Evo"
         
     def set_application_name(self, name: str):
         self.data["assistant"]["application_name"] = name

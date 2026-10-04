@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 #flight_finder.py
 import json
 import re
@@ -218,7 +218,7 @@ def _format_text_report(
     page_url:    str,
 ) -> str:
     lines = [
-        "Brahma AI - Flight Search Results",
+        "NIGHTFALL AI - Flight Search Results",
         "─" * 50,
         f"Route     : {origin} → {destination}",
         f"Date      : {date}",

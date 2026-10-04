@@ -1,5 +1,5 @@
-# actions/open_app.py
-# Brahma AI - Cross-Platform App Launcher
+﻿# actions/open_app.py
+# NIGHTFALL AI - Cross-Platform App Launcher
 
 import os
 import time

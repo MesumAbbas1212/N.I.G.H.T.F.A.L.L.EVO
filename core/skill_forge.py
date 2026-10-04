@@ -1,9 +1,9 @@
-"""
+﻿"""
 The Skill Forge: Autonomous Capability Synthesis Engine
-Part of Project Ultron for Brahma AI.
+Part of Project Ultron for NIGHTFALL AI.
 
 Transforms natural language goals into fully architected, tested,
-and hot-pluggable Python skills for Brahma AI.
+and hot-pluggable Python skills for NIGHTFALL AI.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _get_gemini_api_key() -> str:
 
 
 class SkillForge:
-    """Autonomous synthesizer of new Brahma AI skills."""
+    """Autonomous synthesizer of new NIGHTFALL AI skills."""
 
     @classmethod
     def forge_skill(
@@ -151,7 +151,7 @@ class SkillForge:
                 f'"""\n'
                 f'Feature: {actual_name}\n'
                 f'Description: {manifest.get("description", "")}\n'
-                f'Autonomous Evolutionary Capability synthesized by Brahma AI.\n'
+                f'Autonomous Evolutionary Capability synthesized by NIGHTFALL AI.\n'
                 f'"""\n\n'
                 f'FEATURE_METADATA = {meta_str}\n\n'
             )
@@ -244,7 +244,7 @@ class SkillForge:
     @classmethod
     def _call_llm_synthesizer(cls, goal: str, name_hint: str, context_hints: str) -> Dict[str, Any]:
         """Prompts Gemini to generate the complete skill package JSON."""
-        system_instructions = """You are the Brahma AI Autonomous Skill Architect ("Project Ultron").
+        system_instructions = """You are the NIGHTFALL AI Autonomous Skill Architect ("Project Ultron").
 Your mission is to invent, architect, and write a complete, standalone, production-ready Python skill plugin.
 
 Skill Architecture Guidelines:
@@ -261,7 +261,7 @@ Skill Architecture Guidelines:
 5. Visual Deliverables, Images, GIFs, & UI Cards:
    - If the user asks for images, drawings, graphics, headphones, cars, animals, cartoons, plots, scorecards, charts, or GIFs:
      a) ALWAYS produce an actual deliverable image file (.png or .gif) saved to:
-        `output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')`
+        `output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')`
         `os.makedirs(output_dir, exist_ok=True)`
         `image_path = os.path.join(output_dir, f'{actual_name}_output.png')`
      b) For diagrams, illustrations, charts, or tech visuals: Generate the visual NATIVELY using `PIL` (`from PIL import Image, ImageDraw, ImageFont`) or `matplotlib` (`import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt`).
@@ -269,7 +269,7 @@ Skill Architecture Guidelines:
      c) For web images/GIFs: Attempt downloading using safe SSL context or requests, but if download fails or if network is unavailable, IMMEDIATELY fall back to drawing a crisp high-tech visual deliverable using PIL/matplotlib so execution always succeeds and displays on screen.
      d) Return format for visuals:
         `return {'image_path': image_path, 'title': '...', 'summary': '...'}`
-        This triggers Brahma Evo's HUD Result Wing to immediately display the card!
+        This triggers NIGHTFALL Evo's HUD Result Wing to immediately display the card!
 6. Output Format:
    Output MUST be clean JSON with exact structure:
 {
@@ -356,7 +356,7 @@ Additional Context: {context_hints}
     @classmethod
     def _repair_code(cls, broken_code: str, error_msg: str, goal: str) -> Dict[str, Any]:
         """Asks LLM to fix syntax or sandbox runtime errors."""
-        prompt = f"""You are repairing a Python skill generated for Brahma AI ("Project Ultron").
+        prompt = f"""You are repairing a Python skill generated for NIGHTFALL AI ("Project Ultron").
 The skill failed verification in the Crucible sandbox.
 User Goal: {goal}
 Verification Error: {error_msg}
@@ -370,7 +370,7 @@ Critical Repair Instructions:
 1. Ensure `def execute(**kwargs)` handles empty or missing kwargs with safe defaults.
 2. If using `matplotlib`, ensure `import matplotlib; matplotlib.use('Agg')` is placed before `pyplot`.
 3. If making HTTP requests, use `requests` with `timeout=8, verify=False` or `urllib` with `ssl._create_unverified_context()`. NEVER assume custom library exceptions or unset API keys (like GIPHY_API_KEY).
-4. If downloading an image or media fails or has SSL errors, NEVER just return an error dictionary. Generate the image natively using PIL (Pillow) or matplotlib and save to `BrahmaAI/deliverables/<name>.png`.
+4. If downloading an image or media fails or has SSL errors, NEVER just return an error dictionary. Generate the image natively using PIL (Pillow) or matplotlib and save to `NIGHTFALLAI/deliverables/<name>.png`.
 5. Return a clean deliverable dictionary with `'image_path'`, `'title'`, `'summary'` if visual, or clean structured output.
 6. The test runner checks that the returned value does NOT contain an `'error'` key. Do not return `{{'error': '...'}}`. If an error occurs, provide a graceful fallback result.
 7. Return ONLY a JSON object:

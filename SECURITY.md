@@ -1,4 +1,4 @@
-# Security Policy
+﻿# Security Policy
 
 ## Supported Versions
 
@@ -16,9 +16,9 @@ Please report security concerns through a private channel or repository owner co
 - Revoke any exposed credentials immediately.
 - Update local configuration files after rotating secrets.
 
-## Brahma Evo Security Overview
+## NIGHTFALL Evo Security Overview
 
-This repository includes a security overview for Brahma Evo's current runtime model, gateway exposure, and authentication flow.
+This repository includes a security overview for NIGHTFALL Evo's current runtime model, gateway exposure, and authentication flow.
 
 ### Local credential handling
 
@@ -29,17 +29,17 @@ This repository includes a security overview for Brahma Evo's current runtime mo
 
 ### AI provider access
 
-- Brahma Evo uses Gemini as the primary AI provider and OpenRouter as a fallback.
+- NIGHTFALL Evo uses Gemini as the primary AI provider and OpenRouter as a fallback.
 - Both API keys are loaded from the local config file and sent to the respective service clients.
 - `config/api_keys.json` is plaintext JSON and is not encrypted by the application.
 
-### Brahma Connect gateway exposure
+### NIGHTFALL Connect gateway exposure
 
-Brahma Connect is the local device gateway layer for Brahma Evo.
+NIGHTFALL Connect is the local device gateway layer for NIGHTFALL Evo.
 
 #### Configuration
 
-- Default gateway config: `config/brahma_connect.json`
+- Default gateway config: `config/NIGHTFALL_connect.json`
 - Default host: `0.0.0.0`
 - Default port: `8765`
 - Default advertise: `true`
@@ -49,8 +49,8 @@ Because the gateway binds to `0.0.0.0`, it is reachable from any interface on th
 
 #### Discovery
 
-- Optional mDNS discovery is provided through `brahma_connect.gateway.discovery.GatewayDiscovery` and Zeroconf.
-- Discovery advertises service `_BRAHMA._tcp.local.` only when the Zeroconf library is installed and `advertise` is enabled.
+- Optional mDNS discovery is provided through `NIGHTFALL_connect.gateway.discovery.GatewayDiscovery` and Zeroconf.
+- Discovery advertises service `_NIGHTFALL._tcp.local.` only when the Zeroconf library is installed and `advertise` is enabled.
 
 #### Local network consideration
 
@@ -62,7 +62,7 @@ Because the gateway binds to `0.0.0.0`, it is reachable from any interface on th
 
 #### Pairing
 
-- Pairing uses a temporary pairing offer created by `brahma_connect.gateway.pairing.PairingManager`.
+- Pairing uses a temporary pairing offer created by `NIGHTFALL_connect.gateway.pairing.PairingManager`.
 - Each offer includes a `pairing_token`, a 6-digit `pairing_code`, and an expiration timestamp.
 - Pairing offers expire after `pairing_ttl_seconds` (default 300 seconds).
 
@@ -74,7 +74,7 @@ Because the gateway binds to `0.0.0.0`, it is reachable from any interface on th
 
 #### Device credentials
 
-- Device records are stored in `config/brahma_connect/devices.json`.
+- Device records are stored in `config/NIGHTFALL_connect/devices.json`.
 - Device secrets are not stored plaintext; the repository stores a `secret_hash`.
 - The `secret_hash` is computed using `hashlib.sha256(secret.encode('utf-8')).hexdigest()`.
 - Authentication uses constant-time comparison (`hmac.compare_digest`) to avoid timing attacks.
@@ -123,8 +123,8 @@ Because the gateway binds to `0.0.0.0`, it is reachable from any interface on th
 ### Recommendations
 
 - Keep `config/api_keys.json` private and out of version control.
-- Use OS firewall rules to restrict access to port `8765` when Brahma Connect is enabled.
-- Disable `advertise` in `config/brahma_connect.json` unless discovery is needed.
+- Use OS firewall rules to restrict access to port `8765` when NIGHTFALL Connect is enabled.
+- Disable `advertise` in `config/NIGHTFALL_connect.json` unless discovery is needed.
 - Revoke lost or untrusted devices using `/gateway/devices/{device_id}/revoke`.
-- Run Brahma Evo on a trusted local network.
+- Run NIGHTFALL Evo on a trusted local network.
 - Consider adding HTTPS/TLS support for the gateway websocket and admin REST endpoints for secure remote access.

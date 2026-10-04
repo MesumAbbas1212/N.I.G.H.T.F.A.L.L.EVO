@@ -1,5 +1,5 @@
-"""
-pdf_tools.py - Brahma AI PDF support
+﻿"""
+pdf_tools.py - NIGHTFALL AI PDF support
 
 Creates publication-grade PDF documents from structured content or markdown,
 with multi-page running headers/footers, table formatting, chapter pagination,
@@ -23,7 +23,7 @@ try:
 except Exception:
     pass
 
-PROJECT_NAME = "Brahma AI - Lite"
+PROJECT_NAME = "NIGHTFALL AI - Lite"
 DEFAULT_OUTPUT_DIR = Path.home() / "Downloads"
 
 
@@ -175,7 +175,7 @@ def _import_pdf():
                 self.setFillColor(colors.HexColor("#64748B"))
 
                 # Running header
-                doc_title = getattr(self, "doc_title", "Brahma AI Executive Report")
+                doc_title = getattr(self, "doc_title", "NIGHTFALL AI Executive Report")
                 self.drawString(54, 750, doc_title[:80])
                 self.setStrokeColor(colors.HexColor("#CBD5E1"))
                 self.setLineWidth(0.5)
@@ -183,7 +183,7 @@ def _import_pdf():
 
                 # Running footer
                 self.line(54, 45, 558, 45)
-                self.drawString(54, 32, "BRAHMA AI - AUTONOMOUS INTELLIGENCE RESEARCH")
+                self.drawString(54, 32, "NIGHTFALL AI - AUTONOMOUS INTELLIGENCE RESEARCH")
                 page_text = f"Page {self._pageNumber} of {page_count}"
                 self.drawRightString(558, 32, page_text)
                 self.restoreState()
@@ -509,23 +509,23 @@ Write substantial, deeply technical paragraphs under every subsection. Ensure al
 
 def _render_title_page(story, pdf, title: str, subtitle: str | None, styles, author: str | None = None):
     story.append(pdf["Spacer"](1, 1.8 * pdf["inch"]))
-    story.append(pdf["Paragraph"]("TECHNICAL RESEARCH MONOGRAPH", styles["brahma_doc_badge"]))
-    story.append(pdf["Paragraph"](title, styles["brahma_doc_title"]))
+    story.append(pdf["Paragraph"]("TECHNICAL RESEARCH MONOGRAPH", styles["NIGHTFALL_doc_badge"]))
+    story.append(pdf["Paragraph"](title, styles["NIGHTFALL_doc_title"]))
     if subtitle:
-        story.append(pdf["Paragraph"](subtitle, styles["brahma_doc_subtitle"]))
+        story.append(pdf["Paragraph"](subtitle, styles["NIGHTFALL_doc_subtitle"]))
     story.append(pdf["Spacer"](1, 0.4 * pdf["inch"]))
     author_text = author or "User"
     story.append(
         pdf["Paragraph"](
-            f"<b>Author:</b> {author_text} &nbsp;|&nbsp; <b>Division:</b> Brahma AI Autonomous Systems &nbsp;|&nbsp; <b>Date:</b> {datetime.now().strftime('%B %d, %Y')}",
-            styles["brahma_doc_meta"],
+            f"<b>Author:</b> {author_text} &nbsp;|&nbsp; <b>Division:</b> NIGHTFALL AI Autonomous Systems &nbsp;|&nbsp; <b>Date:</b> {datetime.now().strftime('%B %d, %Y')}",
+            styles["NIGHTFALL_doc_meta"],
         )
     )
     story.append(pdf["Spacer"](1, 0.1 * pdf["inch"]))
     story.append(
         pdf["Paragraph"](
-            "<b>Classification:</b> Public Technical Monograph &nbsp;|&nbsp; <b>Engine:</b> Brahma AI Publication Core",
-            styles["brahma_doc_meta"],
+            "<b>Classification:</b> Public Technical Monograph &nbsp;|&nbsp; <b>Engine:</b> NIGHTFALL AI Publication Core",
+            styles["NIGHTFALL_doc_meta"],
         )
     )
     story.append(pdf["PageBreak"]())
@@ -548,26 +548,26 @@ def _pdf_story_from_blocks(blocks: list[dict], pdf, styles):
                 if not first_heading:
                     story.append(pdf["PageBreak"]())
                 first_heading = False
-                story.append(pdf["Paragraph"](clean_t, styles["brahma_h1"]))
+                story.append(pdf["Paragraph"](clean_t, styles["NIGHTFALL_h1"]))
                 story.append(pdf["Spacer"](1, 0.08 * pdf["inch"]))
             elif level == 2:
-                story.append(pdf["Paragraph"](clean_t, styles["brahma_h2"]))
+                story.append(pdf["Paragraph"](clean_t, styles["NIGHTFALL_h2"]))
                 story.append(pdf["Spacer"](1, 0.05 * pdf["inch"]))
             else:
-                story.append(pdf["Paragraph"](clean_t, styles["brahma_h3"]))
+                story.append(pdf["Paragraph"](clean_t, styles["NIGHTFALL_h3"]))
                 story.append(pdf["Spacer"](1, 0.04 * pdf["inch"]))
 
         elif kind == "bullet":
             clean_t = _clean_for_reportlab(text)
-            story.append(pdf["Paragraph"](f"&bull;&nbsp;&nbsp;{clean_t}", styles["brahma_bullet"]))
+            story.append(pdf["Paragraph"](f"&bull;&nbsp;&nbsp;{clean_t}", styles["NIGHTFALL_bullet"]))
 
         elif kind == "numbered":
             clean_t = _clean_for_reportlab(text)
-            story.append(pdf["Paragraph"](f"<b>{clean_t}</b>", styles["brahma_bullet"]))
+            story.append(pdf["Paragraph"](f"<b>{clean_t}</b>", styles["NIGHTFALL_bullet"]))
 
         elif kind == "code":
             clean_t = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            story.append(pdf["Paragraph"](f"<pre>{clean_t}</pre>", styles["brahma_code"]))
+            story.append(pdf["Paragraph"](f"<pre>{clean_t}</pre>", styles["NIGHTFALL_code"]))
 
         elif kind == "divider":
             story.append(pdf["Spacer"](1, 0.1 * pdf["inch"]))
@@ -583,9 +583,9 @@ def _pdf_story_from_blocks(blocks: list[dict], pdf, styles):
                 for cell in cells:
                     c_clean = _clean_for_reportlab(cell)
                     if r_idx == 0:
-                        row_flowables.append(pdf["Paragraph"](c_clean, styles["brahma_table_header"]))
+                        row_flowables.append(pdf["Paragraph"](c_clean, styles["NIGHTFALL_table_header"]))
                     else:
-                        row_flowables.append(pdf["Paragraph"](c_clean, styles["brahma_table_cell"]))
+                        row_flowables.append(pdf["Paragraph"](c_clean, styles["NIGHTFALL_table_cell"]))
                 parsed_rows.append(row_flowables)
 
             col_count = len(parsed_rows[0])
@@ -614,7 +614,7 @@ def _pdf_story_from_blocks(blocks: list[dict], pdf, styles):
 
         else:
             clean_t = _clean_for_reportlab(text)
-            story.append(pdf["Paragraph"](clean_t, styles["brahma_body"]))
+            story.append(pdf["Paragraph"](clean_t, styles["NIGHTFALL_body"]))
 
     return story
 
@@ -623,7 +623,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     pdf = _import_pdf()
     title = (parameters.get("title") or parameters.get("name") or "Document").strip()
     subtitle = (parameters.get("subtitle") or "").strip()
-    output_path = _resolve_output_path(parameters.get("output_path"), title, ".pdf", "brahma_ai_output")
+    output_path = _resolve_output_path(parameters.get("output_path"), title, ".pdf", "NIGHTFALL_ai_output")
     auto_open = parameters.get("auto_open", True)
     action = (parameters.get("action") or "create").lower().strip()
     source_path_str = (parameters.get("file_path") or "").strip()
@@ -645,7 +645,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     styles = pdf["getSampleStyleSheet"]()
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_doc_badge",
+        name="NIGHTFALL_doc_badge",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
         fontSize=10,
@@ -656,7 +656,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_doc_title",
+        name="NIGHTFALL_doc_title",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
         fontSize=24,
@@ -667,7 +667,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_doc_subtitle",
+        name="NIGHTFALL_doc_subtitle",
         parent=styles["Normal"],
         fontName="Helvetica",
         fontSize=12,
@@ -678,7 +678,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_doc_meta",
+        name="NIGHTFALL_doc_meta",
         parent=styles["Normal"],
         fontName="Helvetica",
         fontSize=9,
@@ -688,7 +688,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_h1",
+        name="NIGHTFALL_h1",
         parent=styles["Heading1"],
         fontName="Helvetica-Bold",
         fontSize=15.5,
@@ -700,7 +700,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_h2",
+        name="NIGHTFALL_h2",
         parent=styles["Heading2"],
         fontName="Helvetica-Bold",
         fontSize=12.5,
@@ -712,7 +712,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_h3",
+        name="NIGHTFALL_h3",
         parent=styles["Heading3"],
         fontName="Helvetica-Bold",
         fontSize=10.5,
@@ -724,7 +724,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_body",
+        name="NIGHTFALL_body",
         parent=styles["BodyText"],
         fontName="Helvetica",
         fontSize=9.5,
@@ -735,7 +735,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_bullet",
+        name="NIGHTFALL_bullet",
         parent=styles["BodyText"],
         fontName="Helvetica",
         fontSize=9.5,
@@ -746,7 +746,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_table_header",
+        name="NIGHTFALL_table_header",
         parent=styles["Normal"],
         fontName="Helvetica-Bold",
         fontSize=8.5,
@@ -755,7 +755,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_table_cell",
+        name="NIGHTFALL_table_cell",
         parent=styles["Normal"],
         fontName="Helvetica",
         fontSize=8,
@@ -764,7 +764,7 @@ def create_pdf(parameters: dict, player=None) -> str:
     ))
 
     styles.add(pdf["ParagraphStyle"](
-        name="brahma_code",
+        name="NIGHTFALL_code",
         parent=styles["Normal"],
         fontName="Courier",
         fontSize=8,
@@ -821,20 +821,20 @@ def create_pdf(parameters: dict, player=None) -> str:
         signature = (parameters.get("signature") or parameters.get("author") or "User").strip()
         body_text = parameters.get("body") or parameters.get("content") or ""
 
-        story.append(pdf["Paragraph"](date_value, styles["brahma_body"]))
+        story.append(pdf["Paragraph"](date_value, styles["NIGHTFALL_body"]))
         story.append(pdf["Spacer"](1, 0.08 * pdf["inch"]))
         if recipient:
-            story.append(pdf["Paragraph"](recipient, styles["brahma_body"]))
+            story.append(pdf["Paragraph"](recipient, styles["NIGHTFALL_body"]))
             story.append(pdf["Spacer"](1, 0.06 * pdf["inch"]))
-        story.append(pdf["Paragraph"](salutation, styles["brahma_body"]))
+        story.append(pdf["Paragraph"](salutation, styles["NIGHTFALL_body"]))
         story.append(pdf["Spacer"](1, 0.08 * pdf["inch"]))
         for para in _normalize_list(parameters.get("paragraphs")) or [p.strip() for p in re.split(r"\n\s*\n", str(body_text)) if p.strip()]:
-            story.append(pdf["Paragraph"](str(para), styles["brahma_body"]))
+            story.append(pdf["Paragraph"](str(para), styles["NIGHTFALL_body"]))
             story.append(pdf["Spacer"](1, 0.08 * pdf["inch"]))
         story.append(pdf["Spacer"](1, 0.18 * pdf["inch"]))
-        story.append(pdf["Paragraph"](closing, styles["brahma_body"]))
+        story.append(pdf["Paragraph"](closing, styles["NIGHTFALL_body"]))
         story.append(pdf["Spacer"](1, 0.3 * pdf["inch"]))
-        story.append(pdf["Paragraph"](signature, styles["brahma_body"]))
+        story.append(pdf["Paragraph"](signature, styles["NIGHTFALL_body"]))
     else:
         story.extend(_pdf_story_from_blocks(blocks, pdf, styles))
 

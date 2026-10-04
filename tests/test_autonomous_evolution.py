@@ -1,4 +1,4 @@
-import json
+﻿import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -8,9 +8,9 @@ from core.learned_rules import LearnedRulesEngine
 from core.dynamic_registry import DynamicToolRegistry
 
 
-def test_planner_prompt_has_brahma_evo_rebrand_and_rules():
-    assert "Brahma Evo" in PLANNER_PROMPT
-    assert "Brahma AI - Lite" not in PLANNER_PROMPT
+def test_planner_prompt_has_NIGHTFALL_evo_rebrand_and_rules():
+    assert "NIGHTFALL Evo" in PLANNER_PROMPT
+    assert "NIGHTFALL AI - Lite" not in PLANNER_PROMPT
     assert "Echo HUD" not in PLANNER_PROMPT
     assert "AUTONOMOUS SELF-EVOLUTION" in PLANNER_PROMPT
 

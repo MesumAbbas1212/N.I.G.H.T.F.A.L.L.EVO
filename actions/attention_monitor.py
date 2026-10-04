@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import os
@@ -425,7 +425,7 @@ def _speak_edge_native(text: str, force_edge: bool = False) -> None:
         except Exception:
             pass
 
-        audio_path = os.path.join(tempfile.gettempdir(), f"brahma_edge_tts_{uuid.uuid4().hex}.mp3")
+        audio_path = os.path.join(tempfile.gettempdir(), f"NIGHTFALL_edge_tts_{uuid.uuid4().hex}.mp3")
         try:
             communicator = edge_tts.Communicate(text, voice="en-US-GuyNeural")
             communicator.save_sync(audio_path)
@@ -713,7 +713,7 @@ class AttentionMonitor:
                 continue
 
             hay = f"{title} {win.get('class') or ''} {proc_name}".lower()
-            if "brahma" in hay:
+            if "NIGHTFALL" in hay:
                 continue
 
             if app in {"Zoom", "Teams", "WhatsApp"} and _contains_any(hay, ("meeting", "call", "incoming", "ringing", "conference", "joined")):

@@ -1,4 +1,4 @@
-# actions/weather_report.py
+﻿# actions/weather_report.py
 
 import json
 import urllib.request
@@ -128,6 +128,6 @@ def weather_action(
 def _speak_and_log(message: str, player=None):
     if player:
         try:
-            player.write_log(f"Brahma AI: {message}")
+            player.write_log(f"NIGHTFALL AI: {message}")
         except Exception:
             pass

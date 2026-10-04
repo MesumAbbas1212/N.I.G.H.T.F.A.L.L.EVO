@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Brahma Evo Remote</title>
+  <title>NIGHTFALL Evo Remote</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -135,10 +135,10 @@
 </head>
 <body>
   <div class="card" id="card">
-    <div class="logo"><em>BRAHMA EVO</em> AI</div>
+    <div class="logo"><em>NIGHTFALL EVO</em> AI</div>
     <div class="sub">Remote Access</div>
     <p id="reconnecting">Reconnecting…</p>
-    <p class="hint">Press <strong style="color:var(--text)">Mobile Connect</strong> in the Brahma Evo desktop app to get a QR code or session key.</p>
+    <p class="hint">Press <strong style="color:var(--text)">Mobile Connect</strong> in the NIGHTFALL Evo desktop app to get a QR code or session key.</p>
     <div class="key-wrap">
       <input class="key-input" id="key" type="text" maxlength="6"
              autocomplete="off" autocorrect="off" spellcheck="false"
@@ -149,14 +149,14 @@
     <p class="voice-note">
       🎤 <strong style="color:var(--text)">Voice commands:</strong> open
       <code>chrome://flags</code> on your phone, search
-      <code>Insecure origins treated as secure</code>, add your Brahma Evo URL, tap Relaunch.
+      <code>Insecure origins treated as secure</code>, add your NIGHTFALL Evo URL, tap Relaunch.
     </p>
   </div>
 
   <script>
     // Try auto-reconnect with stored device token (set on first QR login)
     (async function() {
-      const devTok = localStorage.getItem('brahma_device_token');
+      const devTok = localStorage.getItem('NIGHTFALL_device_token');
       if (!devTok) return;
       document.getElementById('reconnecting').style.display = 'block';
       try {
@@ -167,14 +167,14 @@
         });
         const d = await r.json();
         if (d.ok && d.token) {
-          sessionStorage.setItem('brahma_key', d.key);
-          sessionStorage.setItem('brahma_token', d.token);
+          sessionStorage.setItem('NIGHTFALL_key', d.key);
+          sessionStorage.setItem('NIGHTFALL_token', d.token);
           location.replace('/');
           return;
         }
       } catch (_) {}
       // Device token rejected (server restarted) — clear it and show normal form
-      localStorage.removeItem('brahma_device_token');
+      localStorage.removeItem('NIGHTFALL_device_token');
       document.getElementById('reconnecting').style.display = 'none';
     })();
 
@@ -203,8 +203,8 @@
         shake(); return;
       }
       if (data.ok && data.token) {
-        sessionStorage.setItem('brahma_key', key);
-        sessionStorage.setItem('brahma_token', data.token);
+        sessionStorage.setItem('NIGHTFALL_key', key);
+        sessionStorage.setItem('NIGHTFALL_token', data.token);
         location.href = '/';
       } else {
         inp.value = '';

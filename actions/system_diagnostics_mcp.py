@@ -1,5 +1,5 @@
-"""
-OS Hardware and System Diagnostics MCP for Brahma AI
+﻿"""
+OS Hardware and System Diagnostics MCP for NIGHTFALL AI
 Provides 100% local, on-demand hardware telemetry, process management,
 battery diagnostics, and multi-monitor brightness controls with zero background API credits.
 """
@@ -260,7 +260,7 @@ def kill_process(target: Union[str, int], force: bool = False) -> Dict[str, Any]
         if target_pid == os.getpid():
             return {
                 "success": False,
-                "message": "Security Guard: Cannot terminate Brahma AI's own process.",
+                "message": "Security Guard: Cannot terminate NIGHTFALL AI's own process.",
             }
         try:
             p = psutil.Process(target_pid)

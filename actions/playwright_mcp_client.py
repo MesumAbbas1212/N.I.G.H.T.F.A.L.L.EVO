@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import os
 import platform
@@ -14,14 +14,14 @@ logger.setLevel(logging.INFO)
 
 
 def _get_app_data_dir() -> Path:
-    """Returns local app data directory for Brahma AI."""
+    """Returns local app data directory for NIGHTFALL AI."""
     if platform.system() == "Windows":
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            p = Path(base) / "BrahmaAI" / "PlaywrightProfile"
+            p = Path(base) / "NIGHTFALLAI" / "PlaywrightProfile"
             p.mkdir(parents=True, exist_ok=True)
             return p
-    home = Path.home() / ".brahma_ai" / "playwright_profile"
+    home = Path.home() / ".NIGHTFALL_ai" / "playwright_profile"
     home.mkdir(parents=True, exist_ok=True)
     return home
 
@@ -108,7 +108,7 @@ class PlaywrightMCPClient:
                     {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {},
-                        "clientInfo": {"name": "brahma-ai", "version": "1.0.0"},
+                        "clientInfo": {"name": "NIGHTFALL-ai", "version": "1.0.0"},
                     },
                     timeout=30,
                 )

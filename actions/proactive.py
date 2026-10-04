@@ -1,4 +1,4 @@
-"""
+﻿"""
 ProactiveEngine 2.0 — context-aware, time-aware, non-repetitive background prompting.
 Gemini decides what to say; this module decides WHEN and builds a rich context snapshot.
 """
@@ -8,14 +8,14 @@ from datetime import datetime
 
 class ProactiveEngine:
     """
-    Decides when Brahma should speak unprompted and builds a context-rich prompt.
+    Decides when NIGHTFALL should speak unprompted and builds a context-rich prompt.
 
     Improvements over 1.0:
       - Time-of-day awareness  (morning / afternoon / evening / night)
       - Monitor-topic awareness (what the user is tracking)
       - Recent-session context  (last few turns of the current conversation)
       - Non-repetitive          (rotates context focus to avoid same opener)
-      - Smarter silence gate    (doesn't fire while Brahma is speaking)
+      - Smarter silence gate    (doesn't fire while NIGHTFALL is speaking)
 
     Defaults:
       min_silence_secs  — 900 s  (15 min) user must be silent before any check

@@ -1,4 +1,4 @@
-# actions/send_message.py
+﻿# actions/send_message.py
 # Universal messaging — WhatsApp & Instagram
 # Uses lightweight pyautogui browser automation.
 
@@ -175,7 +175,7 @@ def _send_email_via_browser(platform: str, receiver: str, message: str) -> str:
             except Exception:
                 continue
 
-        subject = "Message from Brahma Evo"
+        subject = "Message from NIGHTFALL Evo"
         
         plat_lower = platform.lower()
         if "gmail" in plat_lower or "chrome" in plat_lower or "browser" in plat_lower:

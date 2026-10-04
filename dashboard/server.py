@@ -1,6 +1,6 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 """
-dashboard/server.py — Brahma Local HTTP Dashboard
+dashboard/server.py — NIGHTFALL Local HTTP Dashboard
 
 Plain HTTP on port 8000 (no SSL warnings, no firewall issues).
 Security at the application layer: AES-256-CBC with session-key-derived key.
@@ -57,8 +57,8 @@ MAX_UPLOAD_MB = 500
 def _make_uploads_dir() -> Path:
     """Return (and create) the cross-platform uploads folder."""
     for candidate in [
-        Path.home() / "Downloads" / "Brahma Uploads",
-        Path.home() / "Documents" / "Brahma Uploads",
+        Path.home() / "Downloads" / "NIGHTFALL Uploads",
+        Path.home() / "Documents" / "NIGHTFALL Uploads",
         BASE_DIR / "uploads",
     ]:
         try:
@@ -92,7 +92,7 @@ _KEY_CHARS = [c for c in (string.ascii_uppercase + string.digits)
               if c not in ('O', 'I', 'L', '0', '1')]
 
 # ── AES-256-CBC ───────────────────────────────────────────────────────────────
-_AES_SALT = b'BRAHMA-DASHBOARD-v1'
+_AES_SALT = b'NIGHTFALL-DASHBOARD-v1'
 
 
 def _derive_key(session_key: str) -> bytes:
@@ -134,8 +134,8 @@ def _ensure_network_access(port: int) -> None:
     if sys.platform == "win32":
         import ctypes, time
 
-        port_rule = f"Brahma Dashboard Port {port}"
-        prog_rule  = "Brahma Dashboard Python"
+        port_rule = f"NIGHTFALL Dashboard Port {port}"
+        prog_rule  = "NIGHTFALL Dashboard Python"
         py_exe     = sys.executable
 
         def _netsh_rule_exists(name: str) -> bool:
@@ -191,7 +191,7 @@ def _ensure_network_access(port: int) -> None:
             )
 
         bat_body = "\r\n".join(bat_lines) + "\r\n"
-        fd, bat_path = tempfile.mkstemp(suffix=".bat", prefix="brahma_fw_")
+        fd, bat_path = tempfile.mkstemp(suffix=".bat", prefix="NIGHTFALL_fw_")
         try:
             os.write(fd, bat_body.encode("mbcs"))   # Windows cmd.exe expects ANSI
             os.close(fd)
@@ -239,7 +239,7 @@ def _ensure_network_access(port: int) -> None:
                 print("[Dashboard] Refresh your phone browser to connect.")
             else:
                 print("[Dashboard] Setup was not allowed.")
-                print("[Dashboard] Phone connections may fail until Brahma is run as Administrator.")
+                print("[Dashboard] Phone connections may fail until NIGHTFALL is run as Administrator.")
         except Exception as e:
             print(f"[Dashboard] Firewall setup error: {e}")
         finally:
@@ -446,8 +446,8 @@ def _read(name: str) -> str:
 def _ensure_ssl_certs() -> bool:
     """Create local self-signed certs when missing so phones can use HTTPS."""
     certs = get_user_data_dir() / "config" / "certs"
-    key_path = certs / "brahma.key"
-    cert_path = certs / "brahma.crt"
+    key_path = certs / "NIGHTFALL.key"
+    cert_path = certs / "NIGHTFALL.crt"
     if key_path.exists() and cert_path.exists():
         return True
     try:
@@ -461,7 +461,7 @@ def _ensure_ssl_certs() -> bool:
         certs.mkdir(parents=True, exist_ok=True)
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "Brahma AI Local Remote"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "NIGHTFALL AI Local Remote"),
         ])
         alt_names = [
             x509.DNSName("localhost"),
@@ -635,7 +635,7 @@ class DashboardServer:
   h2{color:#f87171;margin-bottom:12px}p{color:#5e6a7e;font-size:14px}
 </style></head>
 <body><div><h2>Link Expired</h2>
-<p>Press <strong style="color:#dde3ed">Mobile Connect</strong> in Brahma to get a new QR code.</p>
+<p>Press <strong style="color:#dde3ed">Mobile Connect</strong> in NIGHTFALL to get a new QR code.</p>
 </div></body></html>""")
 
             del self._pending_keys[key]
@@ -661,12 +661,12 @@ class DashboardServer:
 </style></head>
 <body>
 <script>
-  sessionStorage.setItem('brahma_token','{tok}');
-  sessionStorage.setItem('brahma_key','{key}');
-  localStorage.setItem('brahma_device_token','{dev_tok}');
+  sessionStorage.setItem('NIGHTFALL_token','{tok}');
+  sessionStorage.setItem('NIGHTFALL_key','{key}');
+  localStorage.setItem('NIGHTFALL_device_token','{dev_tok}');
   setTimeout(function(){{location.replace('/')}},400);
 </script>
-<p>Connecting to Brahma…</p>
+<p>Connecting to NIGHTFALL…</p>
 </body></html>""")
 
         @app.post("/api/device-login")
@@ -885,8 +885,8 @@ class DashboardServer:
     # ── serve ─────────────────────────────────────────────────────────────
     async def _serve_alias(self) -> None:
         """Legacy HTTPS alias server kept for compatibility, but not used for QR pairing."""
-        ssl_key  = get_user_data_dir() / "config" / "certs" / "brahma.key"
-        ssl_cert = get_user_data_dir() / "config" / "certs" / "brahma.crt"
+        ssl_key  = get_user_data_dir() / "config" / "certs" / "NIGHTFALL.key"
+        ssl_cert = get_user_data_dir() / "config" / "certs" / "NIGHTFALL.crt"
         asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT + 1)
         cfg = uvicorn.Config(
             self.app, host="0.0.0.0", port=PORT + 1, log_level="warning",
@@ -911,5 +911,5 @@ class DashboardServer:
         )
 
         print(f"[Dashboard] http://{self._ip}:{PORT}")
-        print("[Dashboard] Press 'Mobile Connect' in Brahma UI to get the QR code.")
+        print("[Dashboard] Press 'Mobile Connect' in NIGHTFALL UI to get the QR code.")
         await uvicorn.Server(cfg).serve()

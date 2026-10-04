@@ -1,11 +1,11 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 """
-Brahma AI — Workout & Exercise Tracker.
+NIGHTFALL AI — Workout & Exercise Tracker.
 
 Tracks repetitions, posture, pace, and caloric burn for pushups, squats,
 and other bodyweight exercises. Uses computer vision (MediaPipe pose tracking
 with CV motion-flow fallback) via the webcam, displaying live rep counters
-and form feedback on the Brahma HUD.
+and form feedback on the NIGHTFALL HUD.
 
 Logs workout sessions to memory/workout_history.json.
 """
@@ -61,9 +61,9 @@ PLUGIN = {
     },
 }
 
-# Brahma UI Colors (BGR for OpenCV)
-_COLOR_CYAN   = (255, 200, 50)     # Brahma Cyan/Electric Blue
-_COLOR_GOLD   = (50, 215, 255)     # Brahma Gold/Amber
+# NIGHTFALL UI Colors (BGR for OpenCV)
+_COLOR_CYAN   = (255, 200, 50)     # NIGHTFALL Cyan/Electric Blue
+_COLOR_GOLD   = (50, 215, 255)     # NIGHTFALL Gold/Amber
 _COLOR_WHITE  = (255, 255, 255)
 _COLOR_DARK   = (15, 12, 10)
 _COLOR_GREEN  = (80, 220, 100)
@@ -201,7 +201,7 @@ def _create_optical_tracker():
 
 def _render_hud_overlay(frame: np.ndarray, reps: int, target: int, exercise: str,
                         state: str, flash_until: float, countdown: Optional[int] = None) -> np.ndarray:
-    """Renders a sleek, high-tech Brahma HUD overlay with exercise name, reps, and target."""
+    """Renders a sleek, high-tech NIGHTFALL HUD overlay with exercise name, reps, and target."""
     h, w = frame.shape[:2]
     out = frame.copy()
 
@@ -220,7 +220,7 @@ def _render_hud_overlay(frame: np.ndarray, reps: int, target: int, exercise: str
     # Rep counter display
     is_flash = time.time() < flash_until
     rep_color = _COLOR_GOLD if is_flash else _COLOR_CYAN
-    title_text = f"BRAHMA FIT // {exercise.upper()}"
+    title_text = f"NIGHTFALL FIT // {exercise.upper()}"
     cv2.putText(out, title_text, (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, _COLOR_WHITE, 1, cv2.LINE_AA)
 
     rep_str = f"{reps}"
@@ -286,7 +286,7 @@ def _record_session(exercise: str, reps: int, seconds: float, calories: float) -
     return entry
 
 def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
-    """Main execution function for Brahma Workout Tracker."""
+    """Main execution function for NIGHTFALL Workout Tracker."""
     query = (parameters.get("query") or "").strip()
     q_lower = query.lower()
 
@@ -443,7 +443,7 @@ def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
 
     if player and hasattr(player, "show_content"):
         try:
-            player.show_content("💪 BRAHMA FITNESS SUMMARY", summary_card)
+            player.show_content("💪 NIGHTFALL FITNESS SUMMARY", summary_card)
         except Exception:
             pass
 

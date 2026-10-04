@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 import json
 import re
 import sys
@@ -23,7 +23,7 @@ class ErrorDecision(Enum):
     ABORT       = "abort"    
 
 
-ERROR_ANALYST_PROMPT = """You are the error recovery module of Brahma AI - Lite AI assistant.
+ERROR_ANALYST_PROMPT = """You are the error recovery module of NIGHTFALL AI - Lite AI assistant.
 
 A task step has failed. Analyze the error and decide what to do.
 

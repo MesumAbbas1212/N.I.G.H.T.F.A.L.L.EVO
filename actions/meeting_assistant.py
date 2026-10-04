@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from core.user_paths import get_user_data_dir
 
 import base64
@@ -359,7 +359,7 @@ class MeetingAssistant:
                 spoken = self._last_speech
 
                 prompt = f"""
-You are Brahma AI - Lite running in meeting mode on a Windows desktop.
+You are NIGHTFALL AI - Lite running in meeting mode on a Windows desktop.
 The screen belongs to a live Zoom, Microsoft Teams, WhatsApp call, or similar meeting.
 
 Tasks:

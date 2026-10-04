@@ -1,5 +1,5 @@
-"""
-Brahma Geospatial Globe Engine.
+﻿"""
+NIGHTFALL Geospatial Globe Engine.
 Provides real-time 3D Earth tracking, great-circle distance/route calculation,
 live flight radar integration, and geographic inspection.
 """
@@ -133,7 +133,7 @@ def geocode_location(location_name: str) -> Tuple[float, float, str]:
     # 3. Online Open-Meteo Geocoding API fallback
     try:
         url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(location_name)}&count=1"
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-HoloGlobe/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-HoloGlobe/1.0"})
         with urllib.request.urlopen(req, timeout=4) as response:
             payload = json.loads(response.read().decode("utf-8"))
             results = payload.get("results") or []
@@ -232,7 +232,7 @@ def fetch_live_flights_in_bounds(min_lat: float, max_lat: float, min_lon: float,
 
     flights = []
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-FlightRadar/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-FlightRadar/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             states = data.get("states") or []
@@ -277,7 +277,7 @@ def reverse_geocode_area(lat: float, lon: float) -> str:
 
     try:
         url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat:.3f}&longitude={lon:.3f}&localityLanguage=en"
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-HoloGlobe/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-HoloGlobe/1.0"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             city = data.get("city") or data.get("locality") or ""
@@ -312,7 +312,7 @@ def fetch_driving_route(lat1: float, lon1: float, lat2: float, lon2: float) -> D
         f"?overview=full&geometries=geojson"
     )
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-Navigator/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-Navigator/1.0"})
         with urllib.request.urlopen(req, timeout=6) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("code") == "Ok" and data.get("routes"):
@@ -352,7 +352,7 @@ def fetch_live_iss() -> Dict[str, Any]:
     """Fetch live real-time orbital location and telemetry of the International Space Station."""
     url = "https://api.wheretheiss.at/v1/satellites/25544"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-SpaceRadar/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-SpaceRadar/1.0"})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             lat = round(float(data["latitude"]), 4)
@@ -375,7 +375,7 @@ def fetch_live_iss() -> Dict[str, Any]:
         # Fallback to Open-Notify if WhereTheISS is busy
         try:
             url2 = "http://api.open-notify.org/iss-now.json"
-            req2 = urllib.request.Request(url2, headers={"User-Agent": "BrahmaAI-SpaceRadar/1.0"})
+            req2 = urllib.request.Request(url2, headers={"User-Agent": "NIGHTFALLAI-SpaceRadar/1.0"})
             with urllib.request.urlopen(req2, timeout=4) as resp2:
                 data2 = json.loads(resp2.read().decode("utf-8"))
                 pos = data2.get("iss_position", {})
@@ -400,7 +400,7 @@ def fetch_live_earthquakes(min_magnitude: float = 2.5) -> List[Dict[str, Any]]:
     """Fetch live USGS earthquakes in the past 24 hours."""
     url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-Seismic/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-Seismic/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             features = data.get("features", [])
@@ -475,7 +475,7 @@ def fetch_nearby_places(query_or_category: str, center_lat: Optional[float] = No
             req = urllib.request.Request(
                 ov_url,
                 data=urllib.parse.urlencode({"data": ov_body}).encode("utf-8"),
-                headers={"User-Agent": "BrahmaAI-GeospatialPOI/1.0"}
+                headers={"User-Agent": "NIGHTFALLAI-GeospatialPOI/1.0"}
             )
             with urllib.request.urlopen(req, timeout=8) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -527,7 +527,7 @@ def fetch_nearby_places(query_or_category: str, center_lat: Optional[float] = No
     viewbox = f"{lon-0.3:.4f},{lat+0.3:.4f},{lon+0.3:.4f},{lat-0.3:.4f}"
     url = f"https://nominatim.openstreetmap.org/search?format=json&q={encoded_q}&viewbox={viewbox}&bounded=0&limit=12"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-GeospatialPOI/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-GeospatialPOI/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             places = []
@@ -576,7 +576,7 @@ def fetch_location_weather(lat: float, lon: float) -> Dict[str, Any]:
         95: ("Thunderstorm", "⚡"),
     }
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-Weather/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-Weather/1.0"})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             curr = data.get("current", {})
@@ -608,7 +608,7 @@ def fetch_radar_timestamp() -> Optional[int]:
     """Fetch the latest RainViewer doppler radar frame timestamp."""
     try:
         url = "https://api.rainviewer.com/public/weather-maps.json"
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-WeatherRadar/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-WeatherRadar/1.0"})
         with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             past = data.get("radar", {}).get("past", [])

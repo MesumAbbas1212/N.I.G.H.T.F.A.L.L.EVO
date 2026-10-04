@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 import subprocess
 import sys
 import json
@@ -15,7 +15,7 @@ def get_base_dir():
 
 BASE_DIR         = get_base_dir()
 API_CONFIG_PATH  = get_user_data_dir() / "config" / "api_keys.json"
-PROJECTS_DIR     = Path.home() / "Desktop" / "BrahmaProjects"
+PROJECTS_DIR     = Path.home() / "Desktop" / "NIGHTFALLProjects"
 MAX_FIX_ATTEMPTS = 5
 MODEL_PLANNER    = "gemini-flash-latest"
 MODEL_WRITER     = "gemini-flash-latest"
@@ -461,7 +461,7 @@ def _build_project(
         if speak: speak(msg)
         return msg
 
-    proj_name    = project_name or plan.get("project_name", "brahma_project")
+    proj_name    = project_name or plan.get("project_name", "NIGHTFALL_project")
     proj_name    = re.sub(r"[^\w\-]", "_", proj_name)
     project_dir  = PROJECTS_DIR / proj_name
     project_dir.mkdir(parents=True, exist_ok=True)

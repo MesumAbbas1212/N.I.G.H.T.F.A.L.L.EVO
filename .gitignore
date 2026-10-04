@@ -1,4 +1,4 @@
-# Environments
+﻿# Environments
 .venv/
 venv/
 ENV/
@@ -23,11 +23,11 @@ installer/dist/
 installer/build/
 
 # Android build outputs & IDE
-brahma-connect-android/.gradle/
-brahma-connect-android/**/build/
-brahma-connect-android/local.properties
-brahma-connect-android/.idea/
-brahma-connect-android/.cxx/
+NIGHTFALL-connect-android/.gradle/
+NIGHTFALL-connect-android/**/build/
+NIGHTFALL-connect-android/local.properties
+NIGHTFALL-connect-android/.idea/
+NIGHTFALL-connect-android/.cxx/
 *.apk
 *.aab
 
@@ -55,8 +55,8 @@ config/device_location_cache.json
 config/learned_rules.json
 config/organizer_history.json
 config/patch_history.json
-config/brahma_connect.json
-config/brahma_connect/devices.json
+config/NIGHTFALL_connect.json
+config/NIGHTFALL_connect/devices.json
 memory/calendar_events.json
 memory/long_term.json
 memory/nutrition_log.json

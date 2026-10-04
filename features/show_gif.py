@@ -1,7 +1,7 @@
-"""
+﻿"""
 Feature: show_gif
 Description: Displays a GIF on the screen based on a user-provided search query. Useful for adding visual flair or conveying emotions in a chat.
-Autonomous Evolutionary Capability synthesized by Brahma AI.
+Autonomous Evolutionary Capability synthesized by NIGHTFALL AI.
 """
 
 FEATURE_METADATA = {'name': 'show_gif', 'aliases': ['display gif', 'show animation', 'render gif', 'showgif'], 'description': 'Displays a GIF on the screen based on a user-provided search query. Useful for adding visual flair or conveying emotions in a chat.', 'triggers': ['show me a gif of', 'display animation for', 'find a gif about', 'render gif of', 'show a gif on screen as specified by user', 'show gif'], 'parameters': {'type': 'OBJECT', 'properties': {'query': {'type': 'STRING', 'description': "The search term or topic for the GIF (e.g., 'happy cat', 'dancing robot')."}}, 'required': []}, 'created_at': 1790693040.010282, 'version': '1.0.0', 'author': 'Project Ultron Autonomous Self-Evolution Engine', 'active': True}
@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 def execute(**kwargs):
     """
     Renders and displays an animated GIF deliverable for the requested query
-    on the Brahma Evo HUD.
+    on the NIGHTFALL Evo HUD.
     """
     query = (
         kwargs.get('query')
@@ -27,7 +27,7 @@ def execute(**kwargs):
         query = query.get('query', 'laughing cat')
     query_clean = str(query).strip() or 'laughing cat'
 
-    output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+    output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
     os.makedirs(output_dir, exist_ok=True)
     gif_path = os.path.join(output_dir, 'show_gif_animation.gif')
 
@@ -80,7 +80,7 @@ def execute(**kwargs):
                 draw.text((160, 132), query_clean[:22].upper(), fill='#FFFFFF')
 
             # Telemetry text footer
-            draw.text((25, 265), 'BRAHMA EVO // ANIMATION ENGINE', fill='#38BDF8')
+            draw.text((25, 265), 'NIGHTFALL EVO // ANIMATION ENGINE', fill='#38BDF8')
             draw.text((25, 285), f"PROMPT: {query_clean.title()}", fill='#94A3B8')
 
             frames.append(img)

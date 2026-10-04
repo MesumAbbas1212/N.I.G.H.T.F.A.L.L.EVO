@@ -1,5 +1,5 @@
-"""
-Brahma AI - Autonomous Self-Healing & Self-Improvement Test Runner
+﻿"""
+NIGHTFALL AI - Autonomous Self-Healing & Self-Improvement Test Runner
 Demonstrates:
 1. Catching an unhandled runtime exception in an action (ZeroDivisionError)
 2. Autonomous analysis, AST sandbox verification, and atomic self-patching
@@ -31,7 +31,7 @@ from core.learned_rules import LearnedRulesEngine
 
 def run_test():
     print("=" * 65)
-    print(" [BRAHMA AI] SELF-HEALING & SELF-IMPROVEMENT TEST SUITE")
+    print(" [NIGHTFALL AI] SELF-HEALING & SELF-IMPROVEMENT TEST SUITE")
     print("=" * 65)
 
     # -------------------------------------------------------------

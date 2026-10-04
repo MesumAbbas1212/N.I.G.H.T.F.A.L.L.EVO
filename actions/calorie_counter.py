@@ -1,6 +1,6 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 """
-Brahma AI — Calorie & Nutrition Vision Engine.
+NIGHTFALL AI — Calorie & Nutrition Vision Engine.
 
 Analyzes meals and food through camera capture, uploaded/local images,
 or conversational descriptions. Provides comprehensive macronutrient breakdowns
@@ -117,7 +117,7 @@ def _encode_image_b64(frame: np.ndarray) -> tuple[str, str]:
 def _analyze_food_multimodal(image_b64: Optional[str], query: str) -> dict:
     """Uses LLM client to analyze food visual or description and produce structured JSON."""
     system_prompt = (
-        "You are Brahma AI's Precision Nutrition Engine. "
+        "You are NIGHTFALL AI's Precision Nutrition Engine. "
         "Analyze the food shown in the image or described in the user's prompt. "
         "Estimate calories and macronutrients accurately. "
         "Respond ONLY with a valid JSON object matching this schema:\n"
@@ -235,7 +235,7 @@ def _save_nutrition_log(entry: dict) -> None:
         logger.warning(f"Could not persist nutrition entry: {e}")
 
 def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
-    """Main execution function for Brahma AI Calorie Counter."""
+    """Main execution function for NIGHTFALL AI Calorie Counter."""
     query = (parameters.get("query") or "").strip()
     image_path = parameters.get("image_path")
     use_camera = parameters.get("use_camera")
@@ -327,7 +327,7 @@ def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
         "query": query
     })
 
-    # Display rich breakdown in Brahma UI
+    # Display rich breakdown in NIGHTFALL UI
     panel_content = (
         f"**Dish**: {dish} ({portion})\n\n"
         f"### ⚡ Calories: {cals} kcal\n\n"
@@ -353,7 +353,7 @@ def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
 
     if player and hasattr(player, "show_content"):
         try:
-            player.show_content("🥗 BRAHMA NUTRITION SCAN", panel_content)
+            player.show_content("🥗 NIGHTFALL NUTRITION SCAN", panel_content)
         except Exception:
             pass
 

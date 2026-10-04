@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature: check_current_stock_prices
 Description: Retrieves the current stock price and historical data for a given stock symbol, then generates a dark-themed graph card showing price trends. Defaults to BMW.DE stock.
 """
@@ -90,7 +90,7 @@ def execute(**kwargs):
         fig.autofmt_xdate()
 
         # Create deliverables directory if it doesn't exist
-        deliverables_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+        deliverables_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
         os.makedirs(deliverables_dir, exist_ok=True)
 
         # Save the plot to a file

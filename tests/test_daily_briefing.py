@@ -1,8 +1,8 @@
-import time
+﻿import time
 from unittest.mock import patch
 
 from actions import daily_briefing
-from main import BrahmaLive, _looks_like_daily_briefing_request, _speak_daily_briefing
+from main import NIGHTFALLLive, _looks_like_daily_briefing_request, _speak_daily_briefing
 
 
 def test_daily_briefing_returns_when_one_source_times_out(monkeypatch):
@@ -44,7 +44,7 @@ def test_daily_briefing_command_routes_directly_to_action():
         def start(self):
             self.target()
 
-    assistant = object.__new__(BrahmaLive)
+    assistant = object.__new__(NIGHTFALLLive)
     assistant.ui = FakeUI()
     assistant._reply_mode = False
     assistant._reset_idle_activity = lambda: None
@@ -95,6 +95,6 @@ def test_startup_daily_briefing_is_spoken_even_with_overlay_visible():
     ):
         _speak_daily_briefing(ui, spoken.append)
 
-    assert ui.messages == [("briefing", data), ("log", f"Brahma Evo: {narrative}")]
+    assert ui.messages == [("briefing", data), ("log", f"NIGHTFALL Evo: {narrative}")]
     assert spoken == [narrative]
     native_speak.assert_not_called()

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature: tests_my_internet_speed
 Description: Tests internet download and upload speed and latency, and generates a visual speed gauge card on screen.
 """
@@ -54,7 +54,7 @@ def execute(**kwargs) -> Dict[str, Any]:
         ax.grid(True, color='#1E293B', alpha=0.6)
 
         # Save the plot
-        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+        output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
         os.makedirs(output_dir, exist_ok=True)
         image_path = os.path.join(output_dir, 'internet_speed_test.png')
         plt.savefig(image_path)

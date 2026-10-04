@@ -1,8 +1,8 @@
-"""
+﻿"""
 Autonomous AI Call Attendant & Call Screening Assistant ("Call Proxy")
-Part of Brahma AI.
+Part of NIGHTFALL AI.
 
-Allows Brahma AI Evo to autonomously answer voice/video calls on Windows
+Allows NIGHTFALL AI Evo to autonomously answer voice/video calls on Windows
 (WhatsApp, Teams, Phone Link, Zoom, Skype, etc.), introduce itself as the user's
 AI executive assistant, converse with the caller, transcribe the dialogue in real time,
 record messages and urgency, and deliver a structured debriefing card.
@@ -141,7 +141,7 @@ def _restore_system_audio_after_call(orig_mic_level: Optional[float]) -> None:
 
 class CallAssistant:
     """
-    Manages an active call screening session where Brahma acts as proxy.
+    Manages an active call screening session where NIGHTFALL acts as proxy.
     """
 
     _active_instance: Optional["CallAssistant"] = None
@@ -218,7 +218,7 @@ class CallAssistant:
         _restore_system_audio_after_call(self._orig_mic_level)
 
         excuse = f"{self.owner_name} is joining the line right now. Thank you for holding, please go ahead."
-        self._log_turn("Brahma", excuse)
+        self._log_turn("NIGHTFALL", excuse)
         self._speak(excuse)
 
         if self.ui:
@@ -236,7 +236,7 @@ class CallAssistant:
         self._stop_event.set()
 
         if message:
-            self._log_turn("Brahma", message)
+            self._log_turn("NIGHTFALL", message)
             self._speak(message)
             time.sleep(0.5)
 
@@ -262,8 +262,8 @@ class CallAssistant:
 
     def _speak(self, text: str):
         """
-        Speaks text to the active call using Brahma's UNIFIED native voice (Gemini Live).
-        Blocks until speech finishes so Brahma doesn't cut itself off or listen to its own voice.
+        Speaks text to the active call using NIGHTFALL's UNIFIED native voice (Gemini Live).
+        Blocks until speech finishes so NIGHTFALL doesn't cut itself off or listen to its own voice.
         """
         text = (text or "").strip()
         if not text:
@@ -280,7 +280,7 @@ class CallAssistant:
         except Exception:
             pass
 
-        # 1. Primary: Brahma Unified Native Voice (Gemini Live Charon)
+        # 1. Primary: NIGHTFALL Unified Native Voice (Gemini Live Charon)
         spoken = False
         if self.speak_fn:
             try:
@@ -329,7 +329,7 @@ class CallAssistant:
         greeting = (
             f"Hey! You've reached {self.owner_name}'s line. He's tied up right now, but leave a quick message and I'll make sure he gets it right away!"
         )
-        self._log_turn("Brahma", greeting)
+        self._log_turn("NIGHTFALL", greeting)
         self._speak(greeting)
 
         # Audio stream setup
@@ -352,7 +352,7 @@ class CallAssistant:
             if not caller_text:
                 if turns_count == 1:
                     prompt_again = f"Hey, are you still there? Go ahead with your message for {self.owner_name}."
-                    self._log_turn("Brahma", prompt_again)
+                    self._log_turn("NIGHTFALL", prompt_again)
                     self._speak(prompt_again)
                     continue
                 else:
@@ -380,7 +380,7 @@ class CallAssistant:
 
             if is_just_greeting and turns_count == 1:
                 clarification = "Yeah, I'm here! Go ahead, I'm listening."
-                self._log_turn("Brahma", clarification)
+                self._log_turn("NIGHTFALL", clarification)
                 self._speak(clarification)
                 continue
 
@@ -482,7 +482,7 @@ class CallAssistant:
         api_key = _get_api_key()
         history_str = "\n".join(f"{t['speaker']}: {t['text']}" for t in self.transcript[-6:])
 
-        prompt = f"""You are Brahma AI Evo, an executive AI assistant answering a live phone call on behalf of {self.owner_name}.
+        prompt = f"""You are NIGHTFALL AI Evo, an executive AI assistant answering a live phone call on behalf of {self.owner_name}.
 {self.owner_name} is currently occupied and unavailable to pick up.
 Caller: {self.caller_name} (App: {self.app_name}).
 
@@ -561,7 +561,7 @@ Rules:
             try:
                 from google import genai
                 client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
-                sum_prompt = f"""Summarize this phone call screened by Brahma AI Evo on behalf of {self.owner_name}:
+                sum_prompt = f"""Summarize this phone call screened by NIGHTFALL AI Evo on behalf of {self.owner_name}:
 Caller: {self.caller_name}
 Duration: {duration_str}
 
@@ -665,7 +665,7 @@ def take_over_active_call() -> None:
 
 
 def hang_up_active_call() -> None:
-    """Invoked when user clicks Hang Up or asks Brahma to end the call."""
+    """Invoked when user clicks Hang Up or asks NIGHTFALL to end the call."""
     inst = CallAssistant.get_active()
     if inst:
         inst.hang_up()

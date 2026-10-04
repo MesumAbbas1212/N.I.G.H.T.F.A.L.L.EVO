@@ -1,5 +1,5 @@
-"""
-Brahma AI — Multi-Platform Video Publisher & Content Optimizer.
+﻿"""
+NIGHTFALL AI — Multi-Platform Video Publisher & Content Optimizer.
 
 Automates video uploading and publishing across TikTok Studio, YouTube Shorts,
 and Instagram Reels. Discovers the latest video file from Desktop/Downloads/Videos,
@@ -104,9 +104,9 @@ def _find_candidate_video(custom_path: Optional[str] = None) -> Optional[Path]:
     return candidates[0][1]
 
 def _generate_video_copy(brief: str, platform: str) -> dict:
-    """Uses Brahma's AI client to generate high-performing hooks, captions, and tags."""
+    """Uses NIGHTFALL's AI client to generate high-performing hooks, captions, and tags."""
     system_prompt = (
-        "You are Brahma AI's Social Media Video Director and Viral Copywriter. "
+        "You are NIGHTFALL AI's Social Media Video Director and Viral Copywriter. "
         f"Generate high-engagement publication metadata for {platform.title()}. "
         "Respond ONLY with a valid JSON object matching this schema:\n"
         "{\n"
@@ -140,7 +140,7 @@ def _generate_video_copy(brief: str, platform: str) -> dict:
     }
 
 def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
-    """Main execution function for Brahma Video Publisher."""
+    """Main execution function for NIGHTFALL Video Publisher."""
     brief = (parameters.get("description") or parameters.get("query") or "").strip()
     platform_name = (parameters.get("platform") or "tiktok").strip().lower()
     custom_video_path = parameters.get("video_path")
@@ -206,7 +206,7 @@ def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
     except Exception as e:
         logger.error(f"Failed to open upload URL: {e}")
 
-    # Step 6: Present Rich Card in Brahma UI
+    # Step 6: Present Rich Card in NIGHTFALL UI
     ui_card = (
         f"### 🎬 {platform_name.upper()} VIDEO PUBLISHING ASSISTANT\n\n"
         f"- **Selected Video**: `{video_file.name if video_file else 'None located'}`\n"
@@ -222,7 +222,7 @@ def run(parameters: dict, player=None, speak=None, session_memory=None) -> str:
 
     if player and hasattr(player, "show_content"):
         try:
-            player.show_content("🚀 BRAHMA VIDEO PUBLISHER", ui_card)
+            player.show_content("🚀 NIGHTFALL VIDEO PUBLISHER", ui_card)
         except Exception:
             pass
 

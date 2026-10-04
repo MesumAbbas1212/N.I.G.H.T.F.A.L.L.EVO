@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from core.user_paths import get_user_data_dir
 
 import json
 from pathlib import Path
 from typing import Any
 
-from actions.brahma_dev_agent import run_dev_agent
+from actions.nightfall_dev_agent import run_dev_agent
 from actions.dev_agent import dev_agent
 
 
@@ -43,18 +43,18 @@ def run_developer_mode_request(parameters: dict[str, Any], speak=None) -> str:
     workspace = _selected_workspace(params)
 
     if not workspace:
-        workspace = str(Path.home() / "Desktop" / "BrahmaProjects")
+        workspace = str(Path.home() / "Desktop" / "NIGHTFALLProjects")
         Path(workspace).mkdir(parents=True, exist_ok=True)
 
     params["workspace_path"] = workspace
     params["output_dir"] = workspace
 
-    # Run native Brahma Dev Agent powered by Claude Code architecture & tools
+    # Run native NIGHTFALL Dev Agent powered by Claude Code architecture & tools
     try:
         return run_dev_agent(params, speak=speak)
     except Exception as exc:
-        print(f"[ClaudeBridge] BrahmaDevAgent encountered error: {exc}, falling back to legacy dev agent")
+        print(f"[ClaudeBridge] NIGHTFALLDevAgent encountered error: {exc}, falling back to legacy dev agent")
         params.setdefault("language", params.get("language") or "python")
-        params.setdefault("project_name", params.get("project_name") or "brahma_project")
+        params.setdefault("project_name", params.get("project_name") or "NIGHTFALL_project")
         return dev_agent(params, player=None, speak=speak)
 

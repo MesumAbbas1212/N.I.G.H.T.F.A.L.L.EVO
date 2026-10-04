@@ -1,4 +1,4 @@
-"""
+﻿"""
 Feature: make_stickman_dance_when
 Description: Creates a visual representation of a stickman dancing. This skill is intended to be called when a user explicitly asks for a stickman to dance.
 """
@@ -244,7 +244,7 @@ def execute(**kwargs):
     ani = animation.FuncAnimation(fig, update, frames=len(frames_data), interval=1000/30, blit=True, repeat=False)
 
     # Save animation
-    output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'BrahmaAI', 'deliverables')
+    output_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'NIGHTFALLAI', 'deliverables')
     os.makedirs(output_dir, exist_ok=True)
     image_path = os.path.join(output_dir, 'stickman_dance.gif')
 

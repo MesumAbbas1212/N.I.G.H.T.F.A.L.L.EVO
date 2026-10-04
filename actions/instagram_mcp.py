@@ -1,7 +1,7 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 """
 actions/instagram_mcp.py
-Instagram Model Context Protocol (MCP) & Background Social Engine for Brahma AI.
+Instagram Model Context Protocol (MCP) & Background Social Engine for NIGHTFALL AI.
 
 Features:
 - Direct API posting (Photos & Reels) without browser clicking.
@@ -10,7 +10,7 @@ Features:
 - Auto-opens published posts and sent messages in the user's default browser.
 - Background DM polling daemon with voice announcements:
   "You have a new Instagram message from {username}. What should I reply, or should I take over the chat?"
-- Dual-mode: In-process service for Brahma Evo + standalone MCP JSON-RPC server over stdio.
+- Dual-mode: In-process service for NIGHTFALL Evo + standalone MCP JSON-RPC server over stdio.
 """
 
 import sys

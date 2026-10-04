@@ -1,7 +1,7 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 # actions/spotify_controller.py
 """
-Universal Music & Spotify Controller for Brahma AI.
+Universal Music & Spotify Controller for NIGHTFALL AI.
 
 Guarantees 100% reliable music playback in Google Chrome, handles Spotify searches,
 direct track audio streaming, and global media key playback controls (play, pause, next, volume).
@@ -283,7 +283,7 @@ def spotify_controller(
             _open_url_in_chrome(direct_url)
             if player:
                 try:
-                    player.write_log(f"Brahma Evo: Playing '{query}' in Google Chrome")
+                    player.write_log(f"NIGHTFALL Evo: Playing '{query}' in Google Chrome")
                 except Exception:
                     pass
             return f"Playing '{query}' in Google Chrome."
@@ -306,7 +306,7 @@ def spotify_controller(
 
 
 def run(parameters: dict, player=None, session_memory=None) -> str:
-    """Plugin wrapper for Brahma architecture."""
+    """Plugin wrapper for NIGHTFALL architecture."""
     return spotify_controller(parameters, player=player, session_memory=session_memory)
 
 
@@ -378,7 +378,7 @@ def _spotify_mcp_call(tool_name: str, arguments: dict | None = None) -> dict:
 
         init = request({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
             "protocolVersion": "2024-11-05", "capabilities": {},
-            "clientInfo": {"name": "brahma evo-spotify", "version": "1.0.0"},
+            "clientInfo": {"name": "NIGHTFALL evo-spotify", "version": "1.0.0"},
         }})
         if "error" in init:
             return {"success": False, "error": init["error"].get("message", "Spotify MCP initialization failed.")}

@@ -1,5 +1,5 @@
-"""
-Brahma Passive Sensorium Engine (v2)
+﻿"""
+NIGHTFALL Passive Sensorium Engine (v2)
 An omnipresent background telemetry and perception daemon.
 Continuously senses user context, active task dwell time, system vitals,
 and user idle state with zero performance overhead.
@@ -70,7 +70,7 @@ class PassiveSensorium:
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._loop, name="BrahmaSensorium", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="NIGHTFALLSensorium", daemon=True)
         self._thread.start()
 
     def stop(self):

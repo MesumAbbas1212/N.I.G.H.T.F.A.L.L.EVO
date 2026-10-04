@@ -1,4 +1,4 @@
-from core.user_paths import get_user_data_dir
+﻿from core.user_paths import get_user_data_dir
 # core/device_location.py
 
 import json
@@ -104,7 +104,7 @@ def _reverse_geocode_osm(lat: float, lon: float) -> Optional[str]:
     """Reverse geocodes coordinates using OpenStreetMap Nominatim."""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-        req = urllib.request.Request(url, headers={"User-Agent": "BrahmaAI-LocationEngine/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "NIGHTFALLAI-LocationEngine/1.0"})
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             addr = data.get("address", {})

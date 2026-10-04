@@ -1,5 +1,5 @@
-Write-Host "Building Brahma Evo Application..." -ForegroundColor Cyan
-.\.venv\Scripts\pyinstaller.exe installer\BrahmaEvo.spec --noconfirm
+﻿Write-Host "Building NIGHTFALL Evo Application..." -ForegroundColor Cyan
+.\.venv\Scripts\pyinstaller.exe installer\NIGHTFALLEvo.spec --noconfirm
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to build main application!" -ForegroundColor Red
@@ -7,11 +7,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Main Application built successfully. Now building Setup Wizard..." -ForegroundColor Cyan
-.\.venv\Scripts\pyinstaller.exe installer\BrahmaEvo_Setup.spec --noconfirm
+.\.venv\Scripts\pyinstaller.exe installer\NIGHTFALLEvo_Setup.spec --noconfirm
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to build setup wizard!" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Build complete! Setup is located in dist\BrahmaEvo_Setup.exe" -ForegroundColor Green
+Write-Host "Build complete! Setup is located in dist\NIGHTFALLEvo_Setup.exe" -ForegroundColor Green

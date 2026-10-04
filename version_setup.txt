@@ -1,4 +1,4 @@
-VSVersionInfo(
+﻿VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(1, 0, 0, 0),
     prodvers=(1, 0, 0, 0),
@@ -15,12 +15,12 @@ VSVersionInfo(
       StringTable(
         '040904B0',
         [StringStruct('CompanyName', 'User'),
-        StringStruct('FileDescription', 'Brahma Evo Installer'),
+        StringStruct('FileDescription', 'NIGHTFALL Evo Installer'),
         StringStruct('FileVersion', '1.0.0'),
-        StringStruct('InternalName', 'BrahmaEvoSetup'),
+        StringStruct('InternalName', 'NIGHTFALLEvoSetup'),
         StringStruct('LegalCopyright', '© User. All rights reserved.'),
-        StringStruct('OriginalFilename', 'BrahmaEvo_Setup.exe'),
-        StringStruct('ProductName', 'Brahma Evo'),
+        StringStruct('OriginalFilename', 'NIGHTFALLEvo_Setup.exe'),
+        StringStruct('ProductName', 'NIGHTFALL Evo'),
         StringStruct('ProductVersion', '1.0.0')])
       ]), 
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

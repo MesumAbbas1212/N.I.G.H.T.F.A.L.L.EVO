@@ -1,5 +1,5 @@
-"""
-Brahma AI Evo - Holographic Hardware Assembler & Interactive Circuit HUD.
+﻿"""
+NIGHTFALL AI Evo - Holographic Hardware Assembler & Interactive Circuit HUD.
 Compact, elegant in-app popup overlay that visually shows pin-to-pin wiring
 between microcontroller and sensors, matching the user's reference diagram.
 """
@@ -436,7 +436,7 @@ def generate_circuit_html(circuit: Dict[str, Any]) -> str:
 class CircuitPopupOverlay(QWidget):
     """
     Sleek, compact holographic circuit popup overlay that floats directly
-    inside the Brahma AI main window (not a separate OS window or application).
+    inside the NIGHTFALL AI main window (not a separate OS window or application).
     """
     closed = pyqtSignal()
 
@@ -517,7 +517,7 @@ class CircuitPopupOverlay(QWidget):
 
 def show_circuit_schematic(circuit_data: Dict[str, Any], parent=None) -> Optional[QWidget]:
     """
-    Shows the compact circuit popup inside the Brahma main window.
+    Shows the compact circuit popup inside the NIGHTFALL main window.
     """
     app = QApplication.instance()
     main_win = parent

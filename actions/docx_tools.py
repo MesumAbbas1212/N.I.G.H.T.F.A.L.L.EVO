@@ -1,5 +1,5 @@
-"""
-docx_tools.py - Brahma AI Word / DOCX support
+﻿"""
+docx_tools.py - NIGHTFALL AI Word / DOCX support
 
 Provides dedicated creation, editing, extraction, summarization, and opening
 workflows for editable Word documents.
@@ -15,7 +15,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-PROJECT_NAME = "Brahma AI - Lite"
+PROJECT_NAME = "NIGHTFALL AI - Lite"
 DEFAULT_OUTPUT_DIR = Path.home() / "Downloads"
 
 
@@ -350,11 +350,11 @@ def _create_generic(doc, params):
 
 def _docx_result_path(source_path: Path | None, action: str, output_path: str | None, title: str) -> Path:
     if output_path:
-        fallback = title or (source_path.stem if source_path else "Brahma_AI_Document")
+        fallback = title or (source_path.stem if source_path else "NIGHTFALL_AI_Document")
         return _resolve_output_path(output_path, title=fallback, ext=".docx", fallback_name=fallback)
     if source_path:
         return source_path.with_name(f"{source_path.stem}_{action}.docx")
-    return _resolve_output_path(None, title=title, ext=".docx", fallback_name="Brahma_AI_Document")
+    return _resolve_output_path(None, title=title, ext=".docx", fallback_name="NIGHTFALL_AI_Document")
 
 
 def _load_doc(path: Path):
@@ -367,7 +367,7 @@ def word_document(parameters: dict, player=None, speak=None) -> str:
     action = (params.get("action") or "create").lower().strip()
     file_path_str = (params.get("file_path") or "").strip()
     output_path_str = (params.get("output_path") or "").strip() or None
-    title = (params.get("title") or params.get("subject") or "Brahma AI Document").strip()
+    title = (params.get("title") or params.get("subject") or "NIGHTFALL AI Document").strip()
     doc_type = (params.get("doc_type") or params.get("template") or "").lower().strip()
 
     source_path = Path(file_path_str) if file_path_str else None

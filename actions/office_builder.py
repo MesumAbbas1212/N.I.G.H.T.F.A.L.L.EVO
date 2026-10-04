@@ -1,5 +1,5 @@
-"""
-office_builder.py - Brahma AI office document generation
+﻿"""
+office_builder.py - NIGHTFALL AI office document generation
 
 Creates PowerPoint presentations and Excel workbooks from structured inputs.
 """
@@ -16,8 +16,8 @@ from pathlib import Path
 from actions.ppt_template_workflow import infer_presentation_profile
 
 
-PROJECT_NAME = "Brahma AI - Lite"
-DEFAULT_OUTPUT_DIR = Path.home() / "Desktop" / "BrahmaAI"
+PROJECT_NAME = "NIGHTFALL AI - Lite"
+DEFAULT_OUTPUT_DIR = Path.home() / "Desktop" / "NIGHTFALLAI"
 
 
 def _sanitize_filename(name: str, default: str) -> str:
@@ -44,7 +44,7 @@ def _resolve_output_path(output_path: str | None, title: str, ext: str) -> Path:
         return path
 
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    return DEFAULT_OUTPUT_DIR / f"{_sanitize_filename(title, 'brahma_ai_output')}{ext}"
+    return DEFAULT_OUTPUT_DIR / f"{_sanitize_filename(title, 'NIGHTFALL_ai_output')}{ext}"
 
 
 def _parse_json_arg(value, fallback):

@@ -1,7 +1,7 @@
-"""
+﻿"""
 Feature: show_gif
 Description: Displays a GIF on the screen based on a user-provided search query. Useful for adding visual flair or conveying emotions in a chat.
-Autonomous Evolutionary Capability synthesized by Brahma AI.
+Autonomous Evolutionary Capability synthesized by NIGHTFALL AI.
 """
 
 FEATURE_METADATA = {'name': 'show_gif', 'aliases': ['display gif', 'show animation', 'render gif', 'showgif'], 'description': 'Displays a GIF on the screen based on a user-provided search query. Useful for adding visual flair or conveying emotions in a chat.', 'triggers': ['show me a gif of', 'display animation for', 'find a gif about', 'render gif of', 'show a gif on screen as specified by user', 'show gif'], 'parameters': {'type': 'OBJECT', 'properties': {'query': {'type': 'STRING', 'description': "The search term or topic for the GIF (e.g., 'happy cat', 'dancing robot')."}}, 'required': ['query']}, 'created_at': 1790693040.010282, 'version': '1.0.0', 'author': 'Project Ultron Autonomous Self-Evolution Engine', 'active': True}
