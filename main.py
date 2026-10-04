@@ -647,6 +647,20 @@ def _memory_context_for_request(text: str) -> str:
         return ""
 
 
+def _parse_quick_action_payload(text: str):
+    """Detect a Quick Actions (Alt menu) payload.
+
+    Returns ``{"action", "text"}`` or ``None``. Captured text carried by such a
+    payload is DATA ONLY, so it must be answered with a plain, tool-free reply
+    and must never be saved to memory or trigger any other action.
+    """
+    try:
+        from core.quick_actions import parse_quick_action_payload
+        return parse_quick_action_payload(text)
+    except Exception:
+        return None
+
+
 TOOL_DECLARATIONS = [
     {
         "name": "undo",
@@ -2186,10 +2200,60 @@ class NIGHTFALLLive:
         except Exception:
             pass
 
+    def _handle_quick_action_request(self, parsed: dict) -> None:
+        """Answer a Quick Actions request with a plain, data-only reply.
+
+        The captured text is payload only: no memory extraction, no tool calls,
+        no task workspace and no other side effects — just the requested
+        translation / summary / explanation.
+        """
+        action = str((parsed or {}).get("action") or "translate")
+        captured = str((parsed or {}).get("text") or "")
+        self.ui.set_state("THINKING")
+        try:
+            stop_native_speech()
+        except Exception:
+            pass
+
+        def _worker():
+            try:
+                from core.quick_actions import quick_action_reply
+                reply = quick_action_reply(action, captured)
+            except Exception as exc:
+                print(f"[QuickActions] guard reply failed: {exc}")
+                reply = f"Quick Action ({action}) failed: {exc}"
+            reply = (reply or "").strip() or "No reply."
+            try:
+                self.ui.write_log(f"NIGHTFALL Evo: {reply}")
+            except Exception:
+                pass
+            if not getattr(self.ui, "muted", False):
+                try:
+                    from actions.attention_monitor import _speak_edge_native
+                    _speak_edge_native(reply)
+                except Exception:
+                    try:
+                        self.speak(reply, proactive=True)
+                    except Exception:
+                        pass
+            try:
+                self.ui.set_state("LISTENING")
+            except Exception:
+                pass
+
+        threading.Thread(target=_worker, daemon=True, name="quick-action-guard").start()
+
     def _on_text_command(self, text: str, source: str = "local"):
         self._reset_idle_activity()
         text = (text or "").strip()
         if not text:
+            return
+        # Quick Actions (Alt menu) payloads carry untrusted captured text that
+        # is DATA ONLY. Answer them with a plain, tool-free reply: no memory
+        # extraction, no tools, no task workspace, no other action.
+        quick_action = _parse_quick_action_payload(text)
+        if quick_action is not None:
+            self._handle_quick_action_request(quick_action)
             return
         if len(text) > 4:
             threading.Thread(
