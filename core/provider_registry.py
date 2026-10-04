@@ -252,12 +252,182 @@ def get_provider(provider_id: str, include_disabled: bool = True) -> Optional[di
     return None
 
 
+def describe_configured() -> str:
+    """One-line summary of every provider that is usable right now.
+
+    Used by the assistant when the user asks what it has access to, so the
+    answer matches the Settings screen instead of a second, empty store.
+    """
+    ready = configured_providers()
+    if not ready:
+        return "No AI provider is configured."
+    parts = []
+    for provider in ready:
+        model = provider.get("model") or "default model"
+        parts.append(f"{provider.get('name') or provider.get('id')} ({model})")
+    return f"{len(ready)} provider(s) available: " + "; ".join(parts)
+
+
+def _match_preset(name: str, base_url: str = "") -> Optional[dict]:
+    target_name = _slug(name)
+    target_url = (base_url or "").strip().rstrip("/").lower()
+    for preset in PRESETS:
+        if target_name and _slug(preset.get("name", "")) == target_name:
+            return preset
+    if target_url:
+        for preset in PRESETS:
+            url = str(preset.get("base_url") or "").rstrip("/").lower()
+            if url and (url == target_url or url in target_url):
+                return preset
+    return None
+
+
+def _match_builtin(name: str, base_url: str = "") -> Optional[dict]:
+    target_name = _slug(name)
+    target_url = (base_url or "").strip().rstrip("/").lower()
+    for builtin in BUILTIN_PROVIDERS:
+        if target_name and target_name in (_slug(builtin["id"]), _slug(builtin["name"])):
+            return builtin
+        url = str(builtin.get("base_url") or "").rstrip("/").lower()
+        if target_url and url and url in target_url:
+            return builtin
+    return None
+
+
+def upsert_from_credentials(
+    name: str,
+    api_key: str = "",
+    base_url: str = "",
+    model: str = "",
+    kind: str = "",
+    caps: Optional[Iterable[str]] = None,
+) -> Optional[dict]:
+    """Create or update a provider from a name plus a key/URL.
+
+    This is what the assistant uses when it is told "my Groq key is ..." or
+    "add provider Agnes AI at https://...". Well-known names reuse the matching
+    preset for base URL, model and capabilities; anything else becomes a plain
+    OpenAI-compatible provider, so unknown services work too. A well-known
+    *built-in* (gemini / openrouter / anthropic) stores its key in the usual
+    field instead of creating a duplicate provider.
+    """
+    name = (name or "").strip()
+    if not name and not base_url:
+        return None
+    api_key = (api_key or "").strip()
+    base_url = (base_url or "").strip().rstrip("/")
+
+    builtin = _match_builtin(name, base_url)
+    if builtin and builtin.get("key_field"):
+        if api_key:
+            set_api_key(builtin["key_field"], api_key)
+        return get_provider(builtin["id"])
+
+    preset = _match_preset(name, base_url) or {}
+    entry = {
+        "name": name or preset.get("name") or "Custom provider",
+        "kind": kind or preset.get("kind") or "openai",
+        "base_url": base_url or preset.get("base_url") or "",
+        "api_key": api_key,
+        "model": model or preset.get("model") or "",
+        "caps": list(caps) if caps else list(preset.get("caps") or ["chat"]),
+        "enabled": True,
+    }
+    existing = None
+    for provider in list_custom_providers():
+        if provider["id"] == _slug(entry["name"]):
+            existing = provider
+            break
+    if existing:
+        entry["api_key"] = api_key or existing.get("api_key", "")
+        entry["base_url"] = entry["base_url"] or existing.get("base_url", "")
+        entry["model"] = entry["model"] or existing.get("model", "")
+        entry["priority"] = existing.get("priority", 50)
+    return save_custom_provider(entry)
+
+
+def sync_legacy_providers(entries: dict) -> int:
+    """Import providers stored by the older ``dynamic_providers.json`` store.
+
+    Both stores existed side by side: Settings wrote real providers, while the
+    assistant's ``dynamic_api_configuration`` skill kept its own file and
+    reported "0 registered dynamic providers" even though providers were set
+    up. Everything in the legacy file is folded into the single provider list
+    so both surfaces always agree.
+    """
+    if not isinstance(entries, dict):
+        return 0
+    known = {p["id"] for p in list_custom_providers()}
+    imported = 0
+    for name, values in entries.items():
+        if not isinstance(values, dict):
+            continue
+        api_key = str(values.get("key") or values.get("api_key") or "").strip()
+        base_url = str(values.get("base_url") or "").strip()
+        if not api_key and not base_url:
+            continue
+        if _slug(name) in known:
+            continue
+        if upsert_from_credentials(name, api_key=api_key, base_url=base_url):
+            imported += 1
+            known.add(_slug(name))
+    return imported
+
+
+#: A keyless "local" provider is only usable while its server is actually up.
+#: Probing is a cheap socket connect, cached so routing never blocks on it.
+_LOCAL_PROBE_TTL_UP = 60.0
+_LOCAL_PROBE_TTL_DOWN = 120.0
+_local_probe: dict = {"at": 0.0, "up": False, "key": ""}
+
+
+def _probe_local(base_url: str) -> bool:
+    """True when something is listening on the local provider's host:port."""
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(base_url or "http://localhost:11434")
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (11434 if "11434" in base_url else 80)
+    except Exception:
+        host, port = "localhost", 11434
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            return True
+    except Exception:
+        return False
+
+
+def local_ai_running(force: bool = False) -> bool:
+    """Cached check for a running Ollama / LM Studio / vLLM server."""
+    local = next((p for p in BUILTIN_PROVIDERS if p["id"] == "local"), None)
+    base_url = str((local or {}).get("base_url") or "http://localhost:11434/v1")
+    now = time.time()
+    ttl = _LOCAL_PROBE_TTL_UP if _local_probe["up"] else _LOCAL_PROBE_TTL_DOWN
+    if (not force and _local_probe["key"] == base_url
+            and (now - float(_local_probe["at"])) < ttl):
+        return bool(_local_probe["up"])
+    up = _probe_local(base_url)
+    _local_probe.update({"at": now, "up": up, "key": base_url})
+    return up
+
+
 def configured_providers() -> list[dict]:
-    """Providers that can actually be called right now."""
+    """Providers that can actually be called right now.
+
+    A keyless local provider only counts while its server answers, so routing
+    never sends a request to an Ollama that is not running.
+    """
     ready = []
     for provider in all_providers():
         if provider.get("kind") == "local":
-            ready.append(provider)
+            if provider.get("custom"):
+                # A user-added local provider is an explicit choice: keep it,
+                # but note whether it answered so callers can warn.
+                ready.append(provider)
+            elif local_ai_running():
+                ready.append(provider)
         elif provider.get("api_key"):
             ready.append(provider)
     return ready

@@ -7158,6 +7158,16 @@ class ScanningOverlay(QWidget):
         self.show()
         self.raise_()
         self.setFocus()
+        # The scan animation ticks at 60 fps; it only runs while visible.
+        if not self._tmr.isActive():
+            self._tmr.start(16)
+
+    def hideEvent(self, event):
+        # Stop the 60 fps repaint timer while the overlay is off screen: the
+        # paint loop was the single largest idle CPU cost in the app.
+        if self._tmr.isActive():
+            self._tmr.stop()
+        super().hideEvent(event)
 
     def hide_overlay(self):
         if not self._is_finishing:

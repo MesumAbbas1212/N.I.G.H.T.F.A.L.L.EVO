@@ -8,11 +8,6 @@ import os
 import sys
 import time
 import threading
-import cv2
-import mss
-import mss.tools
-import sounddevice as sd
-import numpy as np
 from pathlib import Path
 
 try:
@@ -23,6 +18,28 @@ except ImportError:
 
 from google import genai
 from google.genai import types
+
+# OpenCV, mss, PortAudio and numpy are imported inside the functions that need
+# them. Importing this module happens at app startup (main.py), and pulling in
+# a ~100 MB computer-vision stack for a feature the user may never invoke was
+# a large part of the app's startup time and memory footprint.
+_PIL_IMAGEGRAB = None
+
+
+def _import_cv2():
+    import cv2
+    return cv2
+
+
+def _import_mss():
+    import mss
+    import mss.tools
+    return mss
+
+
+def _import_sounddevice():
+    import sounddevice as sd
+    return sd
 
 def get_base_dir():
     if getattr(sys, "frozen", False):
@@ -80,6 +97,7 @@ def _get_camera_index() -> int:
 
     print("[Camera] [FIND] No camera index in config. Auto-detecting...")
     best_index = 0
+    cv2 = _import_cv2()
 
     for idx in range(6):
         cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
@@ -137,6 +155,7 @@ def _capture_screenshot() -> bytes:
             raise RuntimeError("PIL not available")
     except Exception as e:
         print(f"[ScreenProcess] PIL ImageGrab failed ({e}). Falling back to mss.")
+        mss = _import_mss()
         with mss.mss() as sct:
             monitors = getattr(sct, "monitors", []) or []
             if len(monitors) > 1:
@@ -151,6 +170,7 @@ def _capture_screenshot() -> bytes:
 
 
 def _capture_camera() -> bytes:
+    cv2 = _import_cv2()
     camera_index = _get_camera_index()
     cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
     if not cap.isOpened():
@@ -305,6 +325,7 @@ class _LiveSession:
             await asyncio.sleep(0.3)
 
     async def _play_loop(self):
+        sd = _import_sounddevice()
         stream = sd.RawOutputStream(
             samplerate=RECEIVE_SAMPLE_RATE,
             channels=CHANNELS,

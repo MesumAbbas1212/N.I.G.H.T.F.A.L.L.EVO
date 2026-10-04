@@ -116,6 +116,14 @@
   *Settings → Jeff Model Routing* (server URL, key, model). Without a server, a built-in heuristic router is used, so
   routing never breaks.
 
+### 🪶 Resource use
+- Heavy stacks stay out of the boot path: OpenCV, mss, PortAudio and numpy are imported only when screen or
+  camera capture actually runs, so startup no longer pays for features you may never use.
+- Settings and key files are cached against their modification time instead of being re-read several times per
+  request, and the scan overlay's 60 fps repaint loop stops while the overlay is hidden.
+- Every provider that is configured is visible to the assistant: *Settings → Custom AI Providers* and the
+  assistant's own provider tool read and write the same store, so "do you see <provider>?" answers match the screen.
+
 ### 🧯 When a free key runs out
 - Free tiers are small — Google's free Gemini plan allows only ~20 requests per day *per model*, which a couple of
   documents or Quick Actions can use up. When that happens NIGHTFALL Evo says so in one short sentence instead of

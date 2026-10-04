@@ -164,15 +164,27 @@ def _config_dirs() -> list[Path]:
     return dirs
 
 
+#: Config files are read on every Quick Action, route and settings lookup; the
+#: answer only changes when the file does, so cache it against mtime + size.
+_config_cache: dict = {}
+
+
 def _load_config(filename: str) -> dict:
     """Load a config file from the user data dir (canonical) or repo config/."""
     for folder in _config_dirs():
         candidate = folder / filename
         try:
-            if candidate.is_file():
-                data = json.loads(candidate.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    return data
+            if not candidate.is_file():
+                continue
+            stat = candidate.stat()
+            stamp = (str(candidate), stat.st_mtime_ns, stat.st_size)
+            cached = _config_cache.get(filename)
+            if cached and cached[0] == stamp:
+                return dict(cached[1])
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _config_cache[filename] = (stamp, data)
+                return dict(data)
         except Exception:
             continue
     return {}

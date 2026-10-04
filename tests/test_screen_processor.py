@@ -29,8 +29,12 @@ def test_capture_screenshot_falls_back_to_primary_monitor(monkeypatch):
         rgb.save(buf, format="PNG")
         return buf.getvalue()
 
-    monkeypatch.setattr(screen_processor.mss, "mss", lambda: FakeMss())
-    monkeypatch.setattr(screen_processor.mss.tools, "to_png", fake_to_png)
+    # mss is imported on demand (it is a ~40MB stack that must not load at
+    # app startup), so the test provides the import itself.
+    fake_mss = type("FakeMssModule", (), {"mss": lambda self=None: FakeMss(),
+                                         "tools": type("T", (), {"to_png": staticmethod(fake_to_png)})})
+    monkeypatch.setattr(screen_processor, "_import_mss", lambda: fake_mss)
+    monkeypatch.setattr(screen_processor, "_PIL_OK", False)
 
     image_bytes = screen_processor._capture_screenshot()
 

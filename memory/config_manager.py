@@ -1,4 +1,4 @@
-﻿"""
+"""
 memory/config_manager.py - Centralized configuration access for NIGHTFALL AI.
 Handles persistent app settings, audio device selection, push-to-talk,
 and AI options. Backed by config/app_settings.json.
@@ -21,15 +21,45 @@ def _ensure_config() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+#: Settings are read on nearly every request (routing, providers, tools), and
+#: each read used to hit the disk. They change only when this module saves
+#: them, so one parsed copy is cached until the file's mtime/size moves.
+_settings_cache: Dict[str, Any] = {}
+_settings_stamp: tuple = ()
+
+
+def _settings_file_stamp() -> tuple:
+    try:
+        stat = SETTINGS_FILE.stat()
+        return (stat.st_mtime_ns, stat.st_size)
+    except Exception:
+        return ()
+
+
+def invalidate_settings_cache() -> None:
+    global _settings_stamp
+    _settings_cache.clear()
+    _settings_stamp = ()
+
+
 def load_settings() -> Dict[str, Any]:
+    global _settings_cache, _settings_stamp
     _ensure_config()
+    stamp = _settings_file_stamp()
+    if stamp and stamp == _settings_stamp and _settings_cache:
+        return dict(_settings_cache)
     if not SETTINGS_FILE.exists():
         return {}
     try:
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except Exception:
         return {}
+    if isinstance(data, dict):
+        _settings_cache = data
+        _settings_stamp = stamp
+        return dict(data)
+    return {}
 
 
 def save_settings(data: Dict[str, Any]) -> None:
@@ -41,6 +71,8 @@ def save_settings(data: Dict[str, Any]) -> None:
             json.dump(current, f, indent=4)
     except Exception as e:
         print(f"[CONFIG] Error saving settings: {e}")
+        return
+    invalidate_settings_cache()
 
 
 def get_setting(key: str, default: Any = None) -> Any:

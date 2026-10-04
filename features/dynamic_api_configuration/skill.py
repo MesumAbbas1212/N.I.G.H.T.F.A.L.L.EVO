@@ -28,15 +28,62 @@ def _get_config_path() -> str:
     return os.path.join(base_dir, 'dynamic_providers.json')
 
 
-def _load_configs() -> Dict[str, Dict[str, Any]]:
+def _registry():
+    """The app's provider registry: the single source of truth.
+
+    Providers added in Settings (or by voice) live in ``api_keys.json`` under
+    ``custom_providers``. This skill used to read only its own
+    ``dynamic_providers.json`` file, so it reported "0 registered dynamic
+    providers" while the Settings screen showed six. Both surfaces now read and
+    write the registry.
+    """
+    try:
+        from core import provider_registry
+        return provider_registry
+    except Exception as exc:  # pragma: no cover - registry is always present
+        print(f"[DynamicAPIConfig] provider registry unavailable: {exc}")
+        return None
+
+
+def _legacy_configs() -> Dict[str, Dict[str, Any]]:
     cfg_file = _get_config_path()
     if os.path.exists(cfg_file):
         try:
             with open(cfg_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
     return {}
+
+
+def _load_configs() -> Dict[str, Dict[str, Any]]:
+    """All configured providers: the registry, plus any legacy entries."""
+    configs: Dict[str, Dict[str, Any]] = _legacy_configs()
+    registry = _registry()
+    if registry is None:
+        return configs
+    # Bring legacy entries into the registry so they become usable providers.
+    try:
+        imported = registry.sync_legacy_providers(configs)
+        if imported:
+            print(f"[DynamicAPIConfig] imported {imported} legacy provider(s) into the registry")
+    except Exception as exc:
+        print(f"[DynamicAPIConfig] legacy import failed: {exc}")
+    for provider in registry.all_providers(include_disabled=True):
+        if not provider.get('custom'):
+            continue
+        configs[provider.get('name') or provider['id']] = {
+            'key': provider.get('api_key', ''),
+            'api_key': provider.get('api_key', ''),
+            'base_url': provider.get('base_url', ''),
+            'model': provider.get('model', ''),
+            'kind': provider.get('kind', 'openai'),
+            'caps': provider.get('caps', []),
+            'active': bool(provider.get('api_key')) or provider.get('kind') == 'local',
+            'source': 'registry',
+        }
+    return configs
 
 
 def _save_configs(data: Dict[str, Dict[str, Any]]) -> None:
@@ -132,7 +179,7 @@ def execute(**kwargs) -> Dict[str, Any]:
             target_provider = provider if provider else 'openrouter'
             if not api_key:
                 api_key = os.environ.get(f"{target_provider.upper()}_API_KEY", "")
-            
+
             if api_key:
                 # Update config
                 configs[target_provider] = {
@@ -146,7 +193,24 @@ def execute(**kwargs) -> Dict[str, Any]:
                 os.environ[f"{target_provider.upper()}_API_KEY"] = api_key
                 if base_url:
                     os.environ[f"{target_provider.upper()}_BASE_URL"] = base_url
-                message = f"Provider '{target_provider}' credentials dynamically injected and synchronized."
+                # Register it as a real provider so the app can actually use it.
+                registry = _registry()
+                saved = None
+                if registry is not None:
+                    try:
+                        saved = registry.upsert_from_credentials(
+                            target_provider, api_key=api_key, base_url=base_url
+                        )
+                    except Exception as exc:
+                        print(f"[DynamicAPIConfig] registry update failed: {exc}")
+                if saved:
+                    model = saved.get('model') or 'default model'
+                    message = (
+                        f"Provider '{saved.get('name') or target_provider}' saved and ready to use "
+                        f"({model}). It will be used by routing, Quick Actions and documents."
+                    )
+                else:
+                    message = f"Provider '{target_provider}' credentials dynamically injected and synchronized."
             else:
                 message = f"Provider '{target_provider}' registered in environment checking state."
 
@@ -155,6 +219,12 @@ def execute(**kwargs) -> Dict[str, Any]:
             if target_provider in configs:
                 configs.pop(target_provider, None)
                 _save_configs(configs)
+            registry = _registry()
+            if registry is not None:
+                try:
+                    registry.remove_custom_provider(target_provider)
+                except Exception as exc:
+                    print(f"[DynamicAPIConfig] registry removal failed: {exc}")
             env_var = f"{target_provider.upper()}_API_KEY"
             if env_var in os.environ:
                 del os.environ[env_var]
@@ -164,7 +234,14 @@ def execute(**kwargs) -> Dict[str, Any]:
             if provider and provider in configs:
                 message = f"Provider '{provider}' active with key {_mask_key(configs[provider].get('key'))}."
             else:
-                message = f"Active system configuration contains {len(configs)} registered dynamic providers."
+                names = [name for name, values in configs.items() if values.get('key') or values.get('base_url')]
+                if names:
+                    message = (
+                        f"{len(names)} provider(s) configured: {', '.join(sorted(names))}. "
+                        "They are used by routing, Quick Actions and document generation."
+                    )
+                else:
+                    message = "No AI providers are configured yet. Add one in Settings, Custom AI Providers."
 
         # Synchronize all stored credentials into os.environ
         for p_name, p_vals in configs.items():
