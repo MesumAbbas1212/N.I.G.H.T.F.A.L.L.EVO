@@ -2127,6 +2127,9 @@ class NIGHTFALLLive:
         # Latest thing the user asked for (typed or spoken). Document tools use it
         # when the model calls them without writing the content itself.
         self._last_user_utterance = ""
+        #: (image bytes, question) captured for the live session by the
+        #: screen_process tool, delivered right after the tool response.
+        self._pending_screen_frame = None
         self._attention_lock = threading.Lock()
         self._attention_monitor = AttentionMonitor(on_event=self._on_external_notification)
         try:
@@ -2389,6 +2392,81 @@ class NIGHTFALLLive:
                 pass
 
         threading.Thread(target=_worker, daemon=True, name="image-command").start()
+
+    # -- screen analysis routing -------------------------------------------
+    def _live_session_available(self) -> bool:
+        """True when the unified voice session can answer about a screenshot."""
+        return bool(getattr(self, "session", None) and getattr(self, "_loop", None))
+
+    def _capture_screen_bytes(self):
+        """Screenshot the primary display, preferring the UI's own capture."""
+        try:
+            capture = getattr(self.ui, "capture_screen_bytes", None)
+            if callable(capture):
+                data = capture()
+                if data:
+                    return bytes(data)
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] UI screen capture failed: {exc}")
+        try:
+            from actions.screen_processor import _capture_screenshot
+            return _capture_screenshot()
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Screen capture failed: {exc}")
+        return None
+
+    def _send_screen_to_live(self, text: str, data: bytes, mime: str = "image/jpeg") -> bool:
+        """Send a screenshot to the unified live session (Zephyr voice).
+
+        One screenshot means one answer: the live session describes it with the
+        same voice as the rest of the app, and the standalone vision module is
+        left unused, so the user never hears two voices at once.
+        """
+        import base64
+
+        parts = [
+            {"inline_data": {"mime_type": mime, "data": base64.b64encode(data).decode("utf-8")}},
+            {"text": text},
+        ]
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self.session.send_client_content(turns={"parts": parts}, turn_complete=True),
+                self._loop,
+            )
+            return True
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Screen send to live session failed: {exc}")
+            return False
+
+    async def _deliver_pending_screen_frame(self) -> None:
+        """Send a captured screen frame to the live session after a tool call.
+
+        The frame goes out only once the tool response has been sent, because
+        the live API rejects client content that arrives while a tool call is
+        still open.  The same session then answers in the app's single voice.
+        """
+        pending = getattr(self, "_pending_screen_frame", None)
+        if not pending:
+            return
+        self._pending_screen_frame = None
+        frame, question = pending
+        import base64 as _b64
+
+        try:
+            await asyncio.sleep(0.4)
+            await self.session.send_client_content(
+                turns={"parts": [
+                    {"inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": _b64.b64encode(frame).decode("utf-8"),
+                    }},
+                    {"text": question},
+                ]},
+                turn_complete=True,
+            )
+            print("[NIGHTFALL EVO] Screen frame delivered to the live session")
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Screen frame delivery failed: {exc}")
 
     def _vision_reply(self, text: str, blobs: list[tuple[bytes, str]]) -> str:
         """Text-only vision fallback used when the live voice session is down."""
@@ -3124,6 +3202,22 @@ class NIGHTFALLLive:
             except Exception:
                 pass
             print("[Main] Screen analysis request received")
+            # One screenshot, one answer: when the unified voice session is
+            # live it answers itself; the separately-voiced vision module is
+            # only a fallback.
+            if self._live_session_available() and not getattr(self.ui, "muted", False):
+                frame = self._capture_screen_bytes()
+                if frame and self._send_screen_to_live(text, frame):
+                    try:
+                        self.ui.update_task_workspace(
+                            status="Screen sent to the voice session",
+                            output="NIGHTFALL Evo is looking at your screen.",
+                            percent=80,
+                        )
+                    except Exception:
+                        pass
+                    print("[Main] Screenshot handed to the live voice session")
+                    return
             img_bytes = None
             if hasattr(self.ui, "capture_screen_bytes"):
                 print("[Main] Capturing screenshot from UI")
@@ -4899,19 +4993,42 @@ class NIGHTFALLLive:
                 result = r or "PDF created."
 
             elif name == "screen_process":
-                if hasattr(self, "set_scanning"):
-                    self.ui.set_scanning(True, "SCANNING SCREEN")
-                threading.Thread(
-                    target=screen_process,
-                    kwargs={
-                        "parameters": args,
-                        "response": None,
-                        "player": self.ui,
-                        "session_memory": None,
-                    },
-                    daemon=True,
-                ).start()
-                result = "Vision module activated. Stay completely silent — vision module will speak directly."
+                screen_question = (
+                    str(args.get("text") or args.get("user_text") or "").strip()
+                    or getattr(self, "_last_user_utterance", "")
+                    or "What do you see on my screen? Answer briefly."
+                )
+                # The voice session asked for the screen: capture it and hand
+                # the frame straight back to that same session so the answer
+                # comes in the app's single voice (Zephyr).  The standalone
+                # vision module is only used when no live session exists.
+                if self._live_session_available() and not getattr(self.ui, "muted", False):
+                    frame = await asyncio.get_event_loop().run_in_executor(
+                        None, self._capture_screen_bytes
+                    )
+                    if frame:
+                        self._pending_screen_frame = (frame, screen_question)
+                        result = (
+                            "Screenshot captured. It is being attached to your view right now: "
+                            "look at it and answer the user's question about the screen yourself, "
+                            "in your normal voice. Do not stay silent."
+                        )
+                    else:
+                        result = "Screen capture failed."
+                else:
+                    if hasattr(self, "set_scanning"):
+                        self.ui.set_scanning(True, "SCANNING SCREEN")
+                    threading.Thread(
+                        target=screen_process,
+                        kwargs={
+                            "parameters": args,
+                            "response": None,
+                            "player": self.ui,
+                            "session_memory": None,
+                        },
+                        daemon=True,
+                    ).start()
+                    result = "Vision module activated. Stay completely silent — vision module will speak directly."
 
             elif name == "computer_settings":
                 r = await loop.run_in_executor(None, lambda: computer_settings(parameters=args, response=None, player=self.ui))
@@ -5465,6 +5582,7 @@ class NIGHTFALLLive:
                         await self.session.send_tool_response(
                             function_responses=fn_responses
                         )
+                        await self._deliver_pending_screen_frame()
 
         except Exception as e:
             print(f"[NIGHTFALL EVO] ❌ Recv: {e}")

@@ -39,6 +39,12 @@ _VK_C = 0x43
 _POLL = 0.02
 _DEBOUNCE = 0.35
 
+#: Clipboard marker written before a copy attempt so that a successful copy
+#: is detectable even when the selected text equals the previous clipboard.
+_CAPTURE_SENTINEL = "__NIGHTFALL_CAPTURE__"
+#: How long to wait for the target app to put the selection on the clipboard.
+_CAPTURE_WAIT = 0.8
+
 
 def _log(msg: str) -> None:
     try:
@@ -488,6 +494,21 @@ class ScreenSnipper(QWidget):
         super().keyPressEvent(e)
 
 
+def _clipboard_text() -> str:
+    try:
+        return QApplication.clipboard().text() or ""
+    except Exception:
+        return ""
+
+
+def _set_clipboard_text(text: str) -> bool:
+    try:
+        QApplication.clipboard().setText(text)
+        return True
+    except Exception:
+        return False
+
+
 def _send_ctrl_c():
     # 1) Send WM_COPY (0x0301) to the focused control first. This is the
     #    same code-path as Edit->Copy in the target app and often works even
@@ -540,6 +561,9 @@ class QuickActionsManager(QObject):
         self.hotkey_triggered.connect(self._on_hotkey)
         self._last_text = ""
         self._clipboard_before = ""
+        #: Window that had focus when the hotkey fired, so a retried copy can
+        #: be pointed back at the app the user selected text in.
+        self._prev_hwnd = 0
 
     def start(self):
         _log("manager start")
@@ -557,31 +581,63 @@ class QuickActionsManager(QObject):
                 if not (user32.GetAsyncKeyState(_VK_ALT) & 0x8000):
                     break
                 time.sleep(0.1)
-            # Snapshot the clipboard first so we can tell whether the copy
-            # actually produced new content (the user may also press Ctrl+C
-            # manually while the overlay is on screen).
+            self._clipboard_before = _clipboard_text()
             try:
-                self._clipboard_before = QApplication.clipboard().text() or ""
+                self._prev_hwnd = ctypes.windll.user32.GetForegroundWindow() or 0
             except Exception:
-                self._clipboard_before = ""
-            # Give the target app a moment to settle, then a single WM_COPY
-            # chance; if that fails we simply wait for the user to press
-            # Ctrl+C themselves while the overlay is on screen.
-            _send_ctrl_c()
-            time.sleep(0.35)
-            selected = QApplication.clipboard().text().strip()
-            if selected in ("__NIGHTFALL_CAPTURE__", "") or selected == self._clipboard_before.strip():
-                # Nothing new landed on the clipboard: there is no selection to
-                # work with, and unrelated clipboard content must never be
-                # treated as captured text.
-                selected = ""
-            self._last_text = selected
-            _log(f"captured {len(selected)} chars")
+                self._prev_hwnd = 0
+            self._last_text = self._capture_selection()
         except Exception as e:
             self._last_text = ""
             _log(f"capture error {e}")
         _log("showing overlay")
         self._overlay.show_near_cursor()
+
+    def _capture_selection(self, wait: float = _CAPTURE_WAIT) -> str:
+        """Copy the current selection from the focused app and return it.
+
+        A sentinel is written to the clipboard first, so the copy can be
+        detected even when the selection happens to match whatever was on the
+        clipboard before.  Apps are polled until the clipboard changes, up to
+        ``wait`` seconds; the original clipboard is restored when nothing was
+        selected.
+        """
+        before = _clipboard_text()
+        selected = ""
+        _set_clipboard_text(_CAPTURE_SENTINEL)
+        try:
+            user32 = ctypes.windll.user32
+            for _ in range(15):
+                if not (user32.GetAsyncKeyState(_VK_ALT) & 0x8000):
+                    break
+                time.sleep(0.1)
+        except Exception:
+            pass
+        attempt = 0
+        while True:
+            _send_ctrl_c()
+            attempt += 1
+            deadline = time.time() + wait
+            while time.time() < deadline:
+                time.sleep(0.05)
+                live = _clipboard_text().strip()
+                if live and live != _CAPTURE_SENTINEL:
+                    selected = live
+                    break
+            if selected:
+                break
+            # Browsers and Electron apps frequently ignore the first Ctrl+C
+            # (the window may still be regaining focus) - give it one more try.
+            if attempt >= 2:
+                break
+            time.sleep(0.15)
+        if not selected:
+            if before and before != _CAPTURE_SENTINEL:
+                _set_clipboard_text(before)
+            _log(f"capture produced no text (attempts={attempt})")
+        else:
+            _log(f"captured {len(selected)} chars (attempts={attempt})")
+        return selected
 
     def _ensure_chat_open(self):
         try:
@@ -599,20 +655,32 @@ class QuickActionsManager(QObject):
         if key == "screen":
             self._snipper.begin()
             return
-        # Prefer the text captured when Alt was pressed. Fall back to the live
-        # clipboard only when it changed since then (i.e. the user pressed
-        # Ctrl+C after the Alt-triggered WM_COPY attempt already ran).
+        # Prefer the text captured when Alt was pressed. If there is none, the
+        # copy missed (browsers often need a second nudge) - retry now that the
+        # overlay is out of the way and the target window has focus back.
         text = (getattr(self, "_last_text", "") or "").strip()
         if not text:
+            _log("no text at click time; retrying capture")
+            self._overlay.hide()
+            time.sleep(0.15)
             try:
-                live = (QApplication.clipboard().text() or "").strip()
+                if self._prev_hwnd:
+                    ctypes.windll.user32.SetForegroundWindow(self._prev_hwnd)
+                    time.sleep(0.15)
             except Exception:
-                live = ""
-            if live and live != self._clipboard_before.strip():
-                text = live
-        if text in ("__NIGHTFALL_CAPTURE__", ""):
-            _log("no text captured; opening chat only")
+                pass
+            text = self._capture_selection(wait=1.0)
+            self._last_text = text
+        if not text or text == _CAPTURE_SENTINEL:
+            _log("no text captured; prompting the user")
             self._ensure_chat_open()
+            try:
+                self._ui.write_log(
+                    "SYS: Nothing was selected. Highlight some text, then press Alt "
+                    "and choose Translate, Summarize or Explain."
+                )
+            except Exception:
+                pass
             return
         action = key if key in _TASK_INSTRUCTIONS else "translate"
         # Captured text is DATA ONLY: it is answered by a dedicated tool-free,

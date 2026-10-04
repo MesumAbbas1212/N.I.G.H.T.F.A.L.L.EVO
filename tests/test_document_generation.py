@@ -263,3 +263,163 @@ def test_document_is_still_written_when_the_model_is_unreachable(tmp_path, monke
     assert "1. Introduction" in text
     assert "7. Conclusion" in text
     assert "MARIE" in text
+
+
+# -- chunked generation ------------------------------------------------------
+# Asking one model call for a whole multi-page document used to blow the
+# output-token ceiling, return truncated (invalid) JSON, and leave the user
+# with the filler template.  Documents are now written outline-first, then one
+# call per section.
+
+def test_title_survives_a_misspelled_adjective():
+    assert clean_document_title("write a detaile report on MARIE") == "MARIE"
+    assert clean_document_title("Write a detailed report on MARIE") == "MARIE"
+    assert clean_document_title("create a word document about cache coherence") == "Cache coherence"
+
+
+def _capture_word_document(monkeypatch):
+    import actions.docx_tools as docx_tools
+
+    captured = {}
+
+    def fake_word_document(parameters=None, player=None, speak=None):
+        captured.update(parameters or {})
+        return "Created the document."
+
+    monkeypatch.setattr(docx_tools, "word_document", fake_word_document)
+    return captured
+
+
+def test_each_section_is_written_by_its_own_call(monkeypatch):
+    import actions.document_generator as dg
+
+    prompts = []
+
+    def fake_gemini_json(prompt, system, timeout):
+        prompts.append((prompt, system))
+        if "Plan a detailed document" in prompt:
+            return {
+                "title": "MARIE Report",
+                "sections": [
+                    {"heading": "1. Introduction", "brief": "what MARIE is"},
+                    {"heading": "2. The Register Set", "brief": "AC, MAR, MBR"},
+                    {"heading": "3. Conclusion", "brief": "summary"},
+                ],
+            }
+        return {"body": "Real prose about MARIE. " * 20, "bullets": ["16-bit words"]}
+
+    monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
+    captured = _capture_word_document(monkeypatch)
+
+    dg.generate_document_from_prompt("write a detailed report on MARIE")
+
+    # one outline call + one call per section, never a single giant request
+    assert len(prompts) == 4
+    assert len(captured["sections"]) == 3
+    assert captured["title"] == "MARIE Report"
+    for section in captured["sections"]:
+        assert len(section["body"]) > 200
+        assert "Real prose about MARIE" in section["body"]
+    assert captured["sections"][0]["bullets"] == ["16-bit words"]
+
+
+def test_sections_are_written_even_without_json_mode(monkeypatch):
+    import actions.document_generator as dg
+
+    def fake_gemini_json(prompt, system, timeout):
+        if "Plan a detailed document" in prompt:
+            return {"title": "MARIE", "sections": [{"heading": "1. Introduction", "brief": "x"}]}
+        return None  # JSON mode failed for the section
+
+    def fake_ask_text(prompt, system):
+        return "Plain prose fallback for the section, written out at length. " * 4
+
+    monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
+    monkeypatch.setattr(dg, "_ask_text", fake_ask_text)
+    captured = _capture_word_document(monkeypatch)
+
+    dg.generate_document_from_prompt("write a report on MARIE")
+
+    assert "Plain prose fallback" in captured["sections"][0]["body"]
+
+
+def test_outline_failure_still_produces_subject_aware_sections(monkeypatch):
+    import actions.document_generator as dg
+
+    monkeypatch.setattr(dg, "_gemini_json", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_ask_text", lambda *a, **k: None)
+    captured = _capture_word_document(monkeypatch)
+
+    dg.generate_document_from_prompt("write a detailed report on MARIE")
+
+    headings = [s["heading"] for s in captured["sections"]]
+    assert headings[0] == "1. Introduction"
+    assert headings[-1] == "7. Conclusion"
+    body = " ".join(s["body"] for s in captured["sections"])
+    assert "MARIE" in body
+    assert "this report will" not in body.lower()
+
+
+def test_tolerant_json_parsing_handles_fences_and_prose():
+    import actions.document_generator as dg
+
+    assert dg._loads_tolerant('```json\n{"body": "hi"}\n```') == {"body": "hi"}
+    assert dg._loads_tolerant('Sure! Here you go:\n{"body": "hi"}\nHope that helps') == {"body": "hi"}
+    assert dg._loads_tolerant("not json at all") is None
+
+
+def test_chunked_generation_reaches_the_docx_on_disk(tmp_path, monkeypatch):
+    """The end-to-end path: request -> outline -> sections -> real .docx."""
+    pytest.importorskip("docx")
+    import actions.document_generator as dg
+
+    def fake_gemini_json(prompt, system, timeout):
+        if "Plan a detailed document" in prompt:
+            return {
+                "title": "MARIE: A Detailed Report",
+                "subtitle": "Computer Organization and Assembly Language",
+                "sections": [
+                    {"heading": "1. Introduction", "brief": "what MARIE is"},
+                    {"heading": "2. Register Set", "brief": "AC, MAR, MBR, PC"},
+                    {"heading": "3. Conclusion", "brief": "summary of the report"},
+                ],
+            }
+        if "Register Set" in prompt:
+            return {
+                "body": (
+                    "MARIE has seven registers that make the fetch-decode-execute cycle "
+                    "visible to a student. The accumulator holds operands and results, the "
+                    "memory address register carries the address being read or written, and "
+                    "the memory buffer register holds the word that travels to or from RAM."
+                ),
+                "bullets": ["AC holds intermediate results", "MAR addresses memory"],
+            }
+        return {
+            "body": (
+                "This section explains the machine architecture that is really intuitive "
+                "and easy, known as MARIE, in the detail a course report requires. The "
+                "architecture is a von Neumann machine with a single 16-bit bus, so every "
+                "transfer can be followed one cycle at a time."
+            )
+        }
+
+    monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
+
+    out = tmp_path / "marie_chunked.docx"
+    result = docx_tools.word_document({
+        "action": "create",
+        "topic": "write a detaile report on MARIE",
+        "output_path": str(out),
+        "open_after": False,
+    })
+
+    assert out.exists(), result
+    text = _read_docx(out)
+    assert "MARIE: A Detailed Report" in text
+    for heading in ("1. Introduction", "2. Register Set", "3. Conclusion"):
+        assert heading in text
+    assert "fetch-decode-execute" in text
+    assert "AC holds intermediate results" in text
+    # The filler template must never appear when a model answered.
+    assert "It is intended as a complete reference" not in text
+    assert len(text) > 700

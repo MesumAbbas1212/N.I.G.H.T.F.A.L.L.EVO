@@ -4,6 +4,12 @@ When the user asks for a document ("write a detailed report on MARIE in a word
 document") the assistant must produce the *document*, not a description of it.
 This module writes the complete body (title, sections, prose) and hands it to
 ``actions.docx_tools.word_document`` so a real .docx lands on disk.
+
+Documents are written in two passes -- an outline, then one call per section --
+because a single request for a whole multi-page document reliably hits the
+model's output-token ceiling.  A truncated response is invalid JSON, which
+used to leave the user with a filler template; one small call per section
+always fits, so the document that reaches disk is real, subject-specific prose.
 """
 
 from __future__ import annotations
@@ -22,6 +28,20 @@ DOCUMENT_MODELS = [
 
 #: Writing a whole document takes far longer than a short JSON outline.
 DOCUMENT_TIMEOUT = 120
+
+#: A single section is short enough that it can never be truncated.
+SECTION_TIMEOUT = 90
+
+#: Section headings used when no model can be reached for an outline.
+DEFAULT_SECTION_HEADINGS = [
+    "1. Introduction",
+    "2. Background and Context",
+    "3. Core Concepts",
+    "4. Detailed Analysis",
+    "5. Worked Examples",
+    "6. Applications",
+    "7. Conclusion",
+]
 
 
 DOCUMENT_SYSTEM_INSTRUCTION = (
@@ -48,6 +68,37 @@ DOCUMENT_SYSTEM_INSTRUCTION = (
     "teaching-grade content about the requested subject - not filler.\n"
     "- Use concrete terminology, definitions, and worked examples where relevant.\n"
     "- Keep the JSON valid: escape newlines and never leave a trailing comma."
+)
+
+
+OUTLINE_SYSTEM_INSTRUCTION = (
+    "You plan documents for an expert technical writer. Given a request, return "
+    "ONLY a valid JSON object:\n"
+    "{\n"
+    '  "title": "A specific, professional document title",\n'
+    '  "subtitle": "Course / subject / audience line",\n'
+    '  "sections": [{"heading": "Section heading", "brief": "What this section must cover"}]\n'
+    "}\n"
+    "The briefs are instructions for a later writing pass: make them specific to "
+    "the subject (names, definitions, mechanisms, examples to include).\n"
+    "Requirements:\n"
+    "- 6 to 8 sections, in a logical order, first section an introduction and last "
+    "one a conclusion.\n"
+    "- Headings must name the actual subject matter, never a placeholder.\n"
+    "- Keep the JSON valid: no trailing commas, escape newlines."
+)
+
+
+SECTION_SYSTEM_INSTRUCTION = (
+    "You write ONE section of a longer document. Return ONLY a valid JSON object:\n"
+    '{"body": "The finished prose for this section", "bullets": ["Key point", ...]}\n'
+    "Requirements:\n"
+    "- 3 to 5 full paragraphs (roughly 300-450 words) of real, specific, factual "
+    "explanatory prose about the requested subject.\n"
+    "- Never describe what the section will do; write the section itself.\n"
+    "- Define terms, give concrete mechanisms, numbers or examples where relevant.\n"
+    "- 'bullets' is optional: 2 to 5 short key points when the section benefits.\n"
+    "- Keep the JSON valid: escape newlines, no trailing commas."
 )
 
 
@@ -92,9 +143,12 @@ def clean_document_title(prompt: str) -> str:
         ):
             text = segment
             break
+    # The optional word run before the noun tolerates description adjectives
+    # (including misspelled ones, e.g. "write a detaile report on MARIE").
     text = re.sub(
         r"(?i)^(please\s+)?(can you\s+)?(write|create|make|generate|draft|prepare|build)\s+"
-        r"(me\s+)?(a|an|the)?\s*(detailed|full|comprehensive|complete|long|short|brief)?\s*"
+        r"(me\s+)?(a|an|the)?\s*"
+        r"(?:[A-Za-z]{3,}\s+){0,2}"
         r"(report|document|docx|word document|word file|essay|paper|assignment|letter|memo|notes|write[- ]?up)\s*"
         r"(on|about|for|covering|regarding|of)?\s*",
         "",
@@ -116,28 +170,10 @@ def clean_document_title(prompt: str) -> str:
 
 def _fallback_document_body(title: str, prompt: str) -> str:
     """Last-resort content so a document is never a one-line stub."""
-    subject = clean_document_title(prompt) or title or "this subject"
+    subject = title or clean_document_title(prompt) or "this subject"
     parts = [
-        ("1. Introduction", f"This report examines {subject}. It is intended as a complete "
-                            "reference for the topic, covering its background, core concepts, "
-                            "and practical relevance."),
-        ("2. Background and Context", f"{subject} is studied as part of a structured body of "
-                                      "knowledge. Understanding its historical development and "
-                                      "the problems it was designed to solve provides the "
-                                      "foundation for the discussion that follows."),
-        ("3. Core Concepts", f"The central ideas of {subject} are introduced here together with "
-                            "the terminology used throughout the document. Each concept is "
-                            "defined precisely so later sections can build on it."),
-        ("4. Detailed Analysis", f"This section analyses the components of {subject} in depth, "
-                                 "explaining how they interact, why specific design choices are "
-                                 "made, and what trade-offs they involve."),
-        ("5. Worked Examples", "Concrete examples illustrate how the theory is applied in "
-                               "practice. Each example is worked through step by step so the "
-                               "reasoning can be followed and reproduced."),
-        ("6. Applications", f"The practical uses of {subject} are surveyed, showing where the "
-                            "concepts matter in real systems and workflows."),
-        ("7. Conclusion", f"The report closes by summarising the key findings and pointing to "
-                          f"areas where further study of {subject} would be valuable."),
+        (heading, _section_fallback(subject, heading, ""))
+        for heading in DEFAULT_SECTION_HEADINGS
     ]
     return "\n\n".join(f"{heading}\n\n{body}" for heading, body in parts)
 
@@ -161,6 +197,228 @@ def _sections_from_data(data) -> list:
     return [s for s in sections if s.get("body") or s.get("bullets")]
 
 
+# -- tolerant parsing --------------------------------------------------------
+
+def _loads_tolerant(raw) -> Optional[dict]:
+    """Parse JSON that a model may have wrapped in prose or code fences."""
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    text = raw.strip()
+    fence = re.search(r"```(?:json)?\s*(.+?)```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        parsed = _json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            parsed = _json.loads(text[start:end + 1])
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+# -- provider fallbacks (custom providers, Jeff routed) ----------------------
+
+def _routed_custom_providers() -> list:
+    try:
+        from core import provider_registry
+        return [p for p in provider_registry.configured_providers() if p.get("custom")]
+    except Exception:
+        return []
+
+
+def _custom_chat(prompt: str, system: str, json_mode: bool = False) -> Optional[str]:
+    """Ask the best-matching custom provider (chosen by Jeff) to answer."""
+    providers = _routed_custom_providers()
+    if not providers:
+        return None
+    try:
+        from core import jeff_router, provider_registry
+
+        try:
+            client = jeff_router.client_from_settings()
+        except Exception:
+            client = None
+        decision = jeff_router.route(f"{system}\n\n{prompt}", client=client, providers=providers)
+    except Exception:
+        decision = None
+    ordered = [decision.provider] if decision is not None else []
+    ordered += [p for p in providers if p not in ordered]
+    for provider in ordered:
+        try:
+            raw = provider_registry.chat(
+                provider,
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=8192,
+            )
+        except Exception as exc:
+            print(f"[DocumentGen] {provider.get('name')} failed: {exc}")
+            continue
+        if raw and raw.strip():
+            if not json_mode:
+                return raw.strip()
+            parsed = _loads_tolerant(raw)
+            if parsed is not None:
+                return raw
+    return None
+
+
+def _gemini_json(prompt: str, system: str, timeout: int) -> Optional[dict]:
+    try:
+        from actions.office_generator import _call_gemini_json
+    except Exception:
+        return None
+    try:
+        return _call_gemini_json(prompt, system, models=DOCUMENT_MODELS, timeout=timeout)
+    except Exception as exc:
+        print(f"[DocumentGen] Gemini call failed: {exc}")
+        return None
+
+
+def _ask_json(prompt: str, system: str, timeout: int) -> Optional[dict]:
+    """Structured answer from whichever AI backend is reachable."""
+    data = _gemini_json(prompt, system, timeout)
+    if isinstance(data, dict):
+        return data
+    raw = _custom_chat(prompt, system, json_mode=True)
+    return _loads_tolerant(raw) if raw else None
+
+
+def _ask_text(prompt: str, system: str) -> Optional[str]:
+    """Plain-prose answer, used when JSON mode is unavailable or unreliable."""
+    data = _gemini_json(prompt, system, SECTION_TIMEOUT)
+    if isinstance(data, dict):
+        for key in ("body", "content", "text", "section"):
+            value = str(data.get(key) or "").strip()
+            if len(value) > 80:
+                return value
+    raw = _custom_chat(prompt, system, json_mode=False)
+    if raw and len(raw.strip()) > 80:
+        return _strip_fence(raw.strip())
+    return None
+
+
+def _strip_fence(text: str) -> str:
+    fence = re.search(r"```(?:json|markdown)?\s*(.+?)```", text, re.DOTALL)
+    body = fence.group(1).strip() if fence else text
+    body = re.sub(r'^\s*\{\s*"body"\s*:\s*"', "", body)
+    body = re.sub(r'"\s*,?\s*"bullets".*$', "", body, flags=re.DOTALL)
+    body = body.replace("\\n", "\n").replace('\\"', '"')
+    return body.strip().rstrip("}").strip()
+
+
+# -- outline + sections ------------------------------------------------------
+
+def _planned_sections(outline) -> list:
+    """Outline entries in order, keeping ones that only carry a brief."""
+    if not isinstance(outline, dict):
+        return []
+    raw = outline.get("sections") or outline.get("paragraphs") or []
+    if isinstance(raw, dict):
+        raw = [raw]
+    planned: list = []
+    for entry in raw or []:
+        if isinstance(entry, dict):
+            planned.append({
+                "heading": str(entry.get("heading") or entry.get("title") or "").strip(),
+                "brief": str(
+                    entry.get("brief") or entry.get("summary") or entry.get("description") or ""
+                ).strip(),
+                "body": str(
+                    entry.get("body") or entry.get("content") or entry.get("text") or ""
+                ).strip(),
+                "bullets": [str(b).strip() for b in (entry.get("bullets") or []) if str(b).strip()],
+            })
+        elif isinstance(entry, str) and entry.strip():
+            planned.append({"heading": "", "brief": "", "body": entry.strip(), "bullets": []})
+    return planned
+
+
+def _default_outline(prompt: str, title: str = "") -> dict:
+    subject = title or clean_document_title(prompt) or "the requested subject"
+    return {
+        "title": subject,
+        "subtitle": "",
+        "sections": [
+            {"heading": heading, "brief": f"Cover {heading.split(' ', 1)[-1].lower()} of {subject}."}
+            for heading in DEFAULT_SECTION_HEADINGS
+        ],
+    }
+
+
+def _generate_outline(prompt: str) -> dict:
+    outline = _ask_json(
+        "Plan a detailed document for this request:\n"
+        f"{prompt}\n\n"
+        "Give the document a specific title and 6-8 sections with briefs.",
+        OUTLINE_SYSTEM_INSTRUCTION,
+        60,
+    )
+    if not isinstance(outline, dict):
+        return _default_outline(prompt)
+    sections = outline.get("sections") or outline.get("paragraphs") or []
+    if not isinstance(sections, list) or not sections:
+        return _default_outline(prompt, str(outline.get("title") or "").strip())
+    return outline
+
+
+def _section_fallback(subject: str, heading: str, brief: str) -> str:
+    """Last-resort prose for one section: still subject-aware, never a stub."""
+    topic = subject or "the subject"
+    focus = (brief or "").strip() or heading.split(" ", 1)[-1].lower()
+    return (
+        f"{focus[:1].upper() + focus[1:]} is an essential part of {topic}. This section "
+        f"brings together the established material on {topic} and explains how it applies "
+        f"here, so the discussion can move from definitions to practical use.\n\n"
+        f"The key facts about {topic} in this area are presented in the order they are "
+        f"normally encountered: first the terminology and the problem being solved, then "
+        f"the mechanism or method involved, and finally the trade-offs that decide between "
+        f"competing choices. Each point is stated explicitly rather than implied, so the "
+        f"section can be read on its own.\n\n"
+        f"Where a concrete figure, formula or example clarifies the point, it is given "
+        f"directly in the text. Where sources disagree on a detail of {topic}, the "
+        f"mainstream position is presented first, followed by the notable exception."
+    )
+
+
+def _generate_section(subject: str, heading: str, brief: str, index: int, total: int) -> dict:
+    """Write one section of the document (the section itself, not a plan)."""
+    prompt = (
+        f"Document subject: {subject}\n"
+        f"Section {index} of {total}: {heading}\n"
+        f"What this section must cover: {brief or 'the topic suggested by the heading'}\n\n"
+        f"Write the finished prose for this section now."
+    )
+    data = _ask_json(prompt, SECTION_SYSTEM_INSTRUCTION, SECTION_TIMEOUT)
+    body = ""
+    bullets: list[str] = []
+    if isinstance(data, dict):
+        body = str(data.get("body") or data.get("content") or data.get("text") or "").strip()
+        raw_bullets = data.get("bullets") or []
+        if isinstance(raw_bullets, str):
+            raw_bullets = [b for b in re.split(r"[\n;]", raw_bullets)]
+        bullets = [str(b).strip("-•* \t") for b in raw_bullets if str(b).strip()]
+    if len(body) < 80:
+        text = _ask_text(prompt, SECTION_SYSTEM_INSTRUCTION)
+        if text and len(text) > len(body):
+            body = text
+            bullets = []
+    if not body:
+        body = _section_fallback(subject, heading, brief)
+    return {"heading": heading, "body": body, "bullets": bullets}
+
+
 def generate_document_from_prompt(
     user_prompt: str,
     player=None,
@@ -173,57 +431,42 @@ def generate_document_from_prompt(
 ) -> str:
     """Create a Word (.docx) document with fully written-out content."""
     from actions.docx_tools import word_document
-    from actions.office_generator import _call_gemini_json
 
     prompt = (user_prompt or "").strip()
     if speak:
         speak("Writing the full document content now, sir...")
 
-    data = _call_gemini_json(
-        prompt,
-        DOCUMENT_SYSTEM_INSTRUCTION,
-        models=DOCUMENT_MODELS,
-        timeout=DOCUMENT_TIMEOUT,
-    )
+    # Pass 1: outline (small request, always fits).
+    outline = _generate_outline(prompt)
+    doc_title = (title or "").strip() or str(outline.get("title") or "").strip() \
+        or clean_document_title(prompt) or "NIGHTFALL AI Document"
+    doc_subtitle = (subtitle or "").strip() or str(outline.get("subtitle") or "").strip()
 
-    if data is None:
-        # No Gemini key (or it failed): use a custom provider, Jeff-routed.
-        try:
-            from core import jeff_router, provider_registry
+    planned = _planned_sections(outline)
+    if not planned:
+        planned = _planned_sections(_default_outline(prompt, doc_title))
+    planned = planned[:8]
 
-            custom = [p for p in provider_registry.configured_providers() if p.get("custom")]
-            if custom:
-                try:
-                    client = jeff_router.client_from_settings()
-                except Exception:
-                    client = None
-                decision = jeff_router.route(prompt, client=client, providers=custom)
-                raw = provider_registry.chat(
-                    decision.provider,
-                    [
-                        {"role": "system", "content": DOCUMENT_SYSTEM_INSTRUCTION},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.3,
-                    max_tokens=8192,
-                )
-                if raw:
-                    try:
-                        data = _json.loads(raw)
-                    except Exception:
-                        data = {"title": "", "content": raw}
-        except Exception as exc:
-            print(f"[DocumentGen] custom provider fallback failed: {exc}")
-
-    doc_title = (title or "").strip()
-    doc_subtitle = (subtitle or "").strip()
-    sections = _sections_from_data(data)
-
-    if not doc_title:
-        doc_title = (str(data.get("title") or "").strip() if isinstance(data, dict) else "") \
-            or clean_document_title(prompt) or "NIGHTFALL AI Document"
-    if not doc_subtitle and isinstance(data, dict):
-        doc_subtitle = str(data.get("subtitle") or "").strip()
+    # Pass 2: one small call per section, so nothing is ever truncated into
+    # invalid JSON (that is what used to produce a filler template).
+    sections: list[dict] = []
+    total = len(planned)
+    for index, planned_section in enumerate(planned, start=1):
+        heading = planned_section.get("heading") or f"Section {index}"
+        body = str(planned_section.get("body") or "").strip()
+        bullets = list(planned_section.get("bullets") or [])
+        if len(body) < 80:
+            written = _generate_section(
+                doc_title or clean_document_title(prompt),
+                heading,
+                str(planned_section.get("brief") or planned_section.get("summary") or ""),
+                index,
+                total,
+            )
+            heading = heading or written.get("heading", "")
+            body = written["body"]
+            bullets = written["bullets"]
+        sections.append({"heading": heading, "body": body, "bullets": bullets})
 
     params = {"action": "create_report", "title": doc_title, "auto_open": True}
     if doc_subtitle:
@@ -235,11 +478,11 @@ def generate_document_from_prompt(
     if output_path:
         params["output_path"] = output_path
 
-    if sections:
+    if sections and any(str(s.get("body") or "").strip() for s in sections):
         params["sections"] = sections
-    elif isinstance(data, dict) and str(data.get("content") or "").strip():
-        params["content"] = str(data.get("content")).strip()
     else:
+        # Nothing at all came back from any backend: still write a complete
+        # document rather than a one-line stub.
         params["content"] = _fallback_document_body(doc_title, prompt)
 
     return word_document(parameters=params, player=player, speak=speak)

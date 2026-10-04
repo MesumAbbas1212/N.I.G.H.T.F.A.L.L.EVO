@@ -225,34 +225,20 @@ def test_route_and_chat_uses_the_selected_provider(providers, monkeypatch):
     assert captured["messages"][-1]["content"] == "fix this python bug"
 
 
-def test_client_from_settings_is_none_when_disabled(monkeypatch):
-    class FakeConfig:
-        @staticmethod
-        def load_settings():
-            return {"jeff_routing_enabled": False, "jeff_base_url": "http://localhost:8000"}
-
-    import sys
-    import types
-
-    module = types.ModuleType("memory.config_manager")
-    module.load_settings = FakeConfig.load_settings
-    monkeypatch.setitem(sys.modules, "memory.config_manager", module)
-    assert jeff_router.client_from_settings() is None
+def test_client_from_settings_is_none_when_disabled():
+    # Settings are passed in explicitly so the assertion never depends on the
+    # developer's real app_settings.json.
+    assert jeff_router.client_from_settings({"jeff_routing_enabled": False}) is None
+    assert jeff_router.client_from_settings({}) is None
 
 
-def test_client_from_settings_reads_configuration(monkeypatch):
-    import sys
-    import types
-
-    module = types.ModuleType("memory.config_manager")
-    module.load_settings = lambda: {
+def test_client_from_settings_reads_configuration():
+    client = jeff_router.client_from_settings({
         "jeff_routing_enabled": True,
         "jeff_base_url": "http://gpu-box:8000/",
         "jeff_api_key": "k1",
         "jeff_model": "jev",
-    }
-    monkeypatch.setitem(sys.modules, "memory.config_manager", module)
-    client = jeff_router.client_from_settings()
+    })
     assert client is not None
     assert client.base_url == "http://gpu-box:8000"
     assert client.api_key == "k1"

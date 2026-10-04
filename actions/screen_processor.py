@@ -41,6 +41,11 @@ IMG_MAX_W = 640
 IMG_MAX_H = 360
 JPEG_Q    = 55
 
+# The whole app speaks with one voice now: the standalone vision module must
+# not answer in a different timbre than the main live session, otherwise two
+# voices describe the same screenshot at the same time.
+VISION_VOICE = "Zephyr"
+
 SYSTEM_PROMPT = (
     "You are NIGHTFALL AI - Lite, an open-source assistant. "
     "Analyze images with technical precision and intelligence. "
@@ -214,7 +219,7 @@ class _LiveSession:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Charon"
+                        voice_name=VISION_VOICE
                     )
                 )
             ),
@@ -310,6 +315,9 @@ class _LiveSession:
         try:
             while True:
                 chunk = await self._audio_in.get()
+                if self._player is not None and getattr(self._player, "muted", False):
+                    # Muted: drain the audio instead of playing it.
+                    continue
                 await asyncio.to_thread(stream.write, chunk)
         except Exception as e:
             print(f"[ScreenProcess] [ERR] Play error: {e}")

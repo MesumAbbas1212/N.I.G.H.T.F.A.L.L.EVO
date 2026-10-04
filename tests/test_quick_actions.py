@@ -6,6 +6,7 @@ memory) instead of transforming it. Captured text may never reach the agent's
 tool/memory pipeline.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -405,3 +406,101 @@ def test_user_message_is_published_once_with_its_attachments():
     assert [e["text"] for e in win.events if e["role"] == "user"] == [
         "what does this say?", "open notepad",
     ]
+
+
+# -- selection capture -------------------------------------------------------
+# Clicking a button with nothing captured used to do nothing at all: the copy
+# that ran when Alt was pressed had missed and there was no retry.  These tests
+# pin the sentinel-based capture (which retries and always tells the user).
+
+class _FakeClipboard:
+    def __init__(self, text=""):
+        self.text = text
+
+
+def _install_fake_clipboard(monkeypatch, clip, copy_effect=None):
+    def fake_set(value):
+        clip.text = value
+        return True
+
+    monkeypatch.setattr(qa, "_clipboard_text", lambda: clip.text)
+    monkeypatch.setattr(qa, "_set_clipboard_text", fake_set)
+
+    calls = {"n": 0}
+
+    def fake_copy():
+        calls["n"] += 1
+        if copy_effect is not None:
+            copy_effect(calls["n"], clip)
+
+    monkeypatch.setattr(qa, "_send_ctrl_c", fake_copy)
+    return calls
+
+
+def test_capture_reports_no_selection_and_restores_the_clipboard(monkeypatch):
+    mgr = _manager(_FakeUI(_FakeWin(_FakeChat()), _FakeChat()))
+    clip = _FakeClipboard("previous clipboard text")
+    _install_fake_clipboard(monkeypatch, clip)  # every Ctrl+C is ignored
+
+    assert mgr._capture_selection(wait=0.1) == ""
+    assert clip.text == "previous clipboard text"
+
+
+def test_capture_retries_when_the_first_copy_is_ignored(monkeypatch):
+    mgr = _manager(_FakeUI(_FakeWin(_FakeChat()), _FakeChat()))
+    clip = _FakeClipboard("previous clipboard text")
+
+    def copy_effect(n, board):
+        if n >= 2:  # browsers often ignore the first Ctrl+C
+            board.text = "the selected sentence"
+
+    calls = _install_fake_clipboard(monkeypatch, clip, copy_effect)
+
+    assert mgr._capture_selection(wait=0.15) == "the selected sentence"
+    assert calls["n"] >= 2
+    assert clip.text == "the selected sentence"
+
+
+def test_capture_detects_a_selection_that_matches_the_old_clipboard(monkeypatch):
+    # The sentinel makes the copy observable even when the user selected
+    # exactly what was already on the clipboard.
+    mgr = _manager(_FakeUI(_FakeWin(_FakeChat()), _FakeChat()))
+    clip = _FakeClipboard("same text")
+    _install_fake_clipboard(monkeypatch, clip, lambda n, board: setattr(board, "text", "same text"))
+
+    assert mgr._capture_selection(wait=0.15) == "same text"
+
+
+def test_button_without_a_selection_tells_the_user(monkeypatch):
+    logged = []
+    ui = _FakeUI(_FakeWin(_FakeChat()), _FakeChat())
+    ui.write_log = lambda text: logged.append(text)
+    mgr = _manager(ui)
+    mgr._last_text = ""
+    monkeypatch.setattr(qa.QuickActionsManager, "_capture_selection", lambda self, wait=0: "")
+
+    mgr._on_choice("translate")
+
+    assert any("Nothing was selected" in line for line in logged), logged
+
+
+def test_button_retries_the_capture_then_answers(monkeypatch):
+    calls = []
+    ui = _FakeUI(_FakeWin(_FakeChat()), _FakeChat())
+    mgr = _manager(ui)
+    mgr._last_text = ""
+    monkeypatch.setattr(
+        qa.QuickActionsManager, "_capture_selection", lambda self, wait=0: "late selection"
+    )
+    monkeypatch.setattr(
+        qa, "quick_action_reply",
+        lambda action, text: calls.append((action, text)) or "translated",
+    )
+
+    mgr._on_choice("explain")
+
+    for _ in range(40):
+        if calls:
+            break
+        time.sleep(0.05)
+    assert calls == [("explain", "late selection")]
