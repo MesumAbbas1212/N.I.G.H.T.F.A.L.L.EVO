@@ -419,6 +419,28 @@ def _generate_section(subject: str, heading: str, brief: str, index: int, total:
     return {"heading": heading, "body": body, "bullets": bullets}
 
 
+def _report_progress(player, done: int, total: int, label: str = "") -> None:
+    """Show visible progress while a multi-call document is being written."""
+    total = max(total, 1)
+    percent = int(min(done, total) / total * 100)
+    if player is None:
+        return
+    try:
+        if hasattr(player, "update_task_workspace"):
+            player.update_task_workspace(
+                status=f"Writing document - section {min(done + 1, total)} of {total}",
+                output=f"Working on: {label}" if label else "Writing the document content.",
+                percent=percent,
+            )
+    except Exception:
+        pass
+    if done and hasattr(player, "write_log"):
+        try:
+            player.write_log(f"SYS: Document section {done}/{total} written.")
+        except Exception:
+            pass
+
+
 def generate_document_from_prompt(
     user_prompt: str,
     player=None,
@@ -451,8 +473,10 @@ def generate_document_from_prompt(
     # invalid JSON (that is what used to produce a filler template).
     sections: list[dict] = []
     total = len(planned)
+    _report_progress(player, 0, total, doc_title)
     for index, planned_section in enumerate(planned, start=1):
         heading = planned_section.get("heading") or f"Section {index}"
+        _report_progress(player, index - 1, total, heading)
         body = str(planned_section.get("body") or "").strip()
         bullets = list(planned_section.get("bullets") or [])
         if len(body) < 80:
@@ -467,6 +491,7 @@ def generate_document_from_prompt(
             body = written["body"]
             bullets = written["bullets"]
         sections.append({"heading": heading, "body": body, "bullets": bullets})
+        _report_progress(player, index, total, heading)
 
     params = {"action": "create_report", "title": doc_title, "auto_open": True}
     if doc_subtitle:

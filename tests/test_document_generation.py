@@ -423,3 +423,35 @@ def test_chunked_generation_reaches_the_docx_on_disk(tmp_path, monkeypatch):
     # The filler template must never appear when a model answered.
     assert "It is intended as a complete reference" not in text
     assert len(text) > 700
+
+
+def test_document_writing_reports_progress(monkeypatch):
+    """A multi-call document takes a while - the user must see it moving."""
+    import actions.document_generator as dg
+
+    def fake_gemini_json(prompt, system, timeout):
+        if "Plan a detailed document" in prompt:
+            return {"title": "T", "sections": [{"heading": "1. One"}, {"heading": "2. Two"}]}
+        return {"body": "Long enough section prose. " * 10}
+
+    monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
+    _capture_word_document(monkeypatch)
+
+    class FakePlayer:
+        def __init__(self):
+            self.updates = []
+            self.logs = []
+
+        def update_task_workspace(self, **kwargs):
+            self.updates.append(kwargs)
+
+        def write_log(self, message):
+            self.logs.append(message)
+
+    player = FakePlayer()
+    dg.generate_document_from_prompt("write a report on MARIE", player=player)
+
+    assert len(player.updates) >= 3
+    assert "section" in player.updates[0]["status"].lower()
+    assert player.updates[-1]["percent"] == 100
+    assert any("2/2" in line for line in player.logs)

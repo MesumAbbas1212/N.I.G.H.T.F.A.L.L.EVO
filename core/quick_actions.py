@@ -712,6 +712,8 @@ class QuickActionsManager(QObject):
         except Exception:
             pass
 
+        finished = threading.Event()
+
         def _worker():
             _log("worker started")
             try:
@@ -743,8 +745,23 @@ class QuickActionsManager(QObject):
                 self._ui.set_state("LISTENING")
             except Exception:
                 pass
+            finally:
+                finished.set()
 
         threading.Thread(target=_worker, daemon=True, name="quick-action").start()
+
+        def _watchdog():
+            # A provider that never answers must not look like a dead button.
+            if not finished.wait(60):
+                _log("quick action still running after 60s")
+                try:
+                    self._ui.write_log(
+                        f"SYS: The AI provider is still working on that {action} request..."
+                    )
+                except Exception:
+                    pass
+
+        threading.Thread(target=_watchdog, daemon=True, name="quick-action-watchdog").start()
 
     def _chat_widgets(self):
         """(in-app chat, slide-out side bar chat) currently available."""
