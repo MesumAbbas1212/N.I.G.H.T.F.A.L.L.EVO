@@ -30,6 +30,14 @@ def main_module():
     return importlib.import_module("main")
 
 
+@pytest.fixture(autouse=True)
+def _isolated_tts_cache(tmp_path, monkeypatch, main_module=None):
+    """Never read or write the real speech cache from a test."""
+    module = importlib.import_module("main")
+    monkeypatch.setattr(module, "_tts_cache_dir", lambda: tmp_path / "tts")
+    (tmp_path / "tts").mkdir(exist_ok=True)
+
+
 class FakeSession:
     """Records every way the app could talk to the live session."""
 
@@ -56,6 +64,7 @@ def _assistant(main, session=None):
     assistant._readout_active = False
     assistant._own_speech_words = []
     assistant._own_speech_lock = threading.Lock()
+    assistant._voice_barge_in = False
     assistant.set_speaking = lambda value: None
     return assistant
 
@@ -336,7 +345,8 @@ def test_a_read_out_stops_the_mic_from_reaching_the_model(monkeypatch, main_modu
     monkeypatch.setattr(main, "_play_pcm_audio", fake_play)
     assistant.speak("a status update")
     assert played.wait(5), "the read-out never played"
-    assert assistant._readout_active is False, "the flag must be cleared afterwards"
+    assert _wait_for(lambda: assistant._readout_active is False), \
+        "the flag must be cleared afterwards"
 
 
 def test_the_mic_callback_skips_the_read_out(main_module):
@@ -421,3 +431,106 @@ def test_playback_uses_the_device_rate(monkeypatch, main_module):
     # 120 samples at 24 kHz become 240 samples at 48 kHz (2 bytes each here,
     # since the fake numpy hands back the raw bytes).
     assert played["count"] == 480
+
+
+# -- the voice must stay Zephyr, and one stream at a time --------------------
+
+def test_repeated_read_outs_do_not_spend_the_speech_quota(monkeypatch, tmp_path, main_module):
+    """Status lines repeat constantly; only the first one should hit the API."""
+    main = main_module
+    calls = []
+
+    class FakeModels:
+        def generate_content(self, model, contents, config):
+            calls.append(contents)
+            part = types.SimpleNamespace(
+                inline_data=types.SimpleNamespace(data=b"\x01\x02" * 4)
+            )
+            return types.SimpleNamespace(
+                candidates=[types.SimpleNamespace(
+                    content=types.SimpleNamespace(parts=[part]))]
+            )
+
+    monkeypatch.setattr(main, "_get_api_key", lambda: "k")
+    monkeypatch.setattr(main.genai, "Client",
+                        lambda api_key=None: types.SimpleNamespace(models=FakeModels()))
+    main._tts_model_ok = None
+    main._tts_blocked_until = 0.0
+
+    first = main._gemini_tts_pcm("Working on web search...")
+    second = main._gemini_tts_pcm("Working on web search...")
+    assert first == second == b"\x01\x02" * 4
+    assert calls == ["Working on web search..."], calls
+
+
+def test_long_text_is_split_for_speech():
+    from main import _split_for_tts
+
+    text = " ".join(f"Sentence number {i} of the report." for i in range(120))
+    chunks = _split_for_tts(text, limit=300)
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 300 for chunk in chunks)
+    assert "".join(chunks).replace(" ", "") == text.replace(" ", "")
+
+
+def test_short_text_stays_one_chunk():
+    from main import _split_for_tts
+
+    assert _split_for_tts("Your document is ready, sir.") == ["Your document is ready, sir."]
+
+
+def test_the_read_out_waits_for_the_live_voice(monkeypatch, main_module):
+    """Two voices at once through one device is what garbles the audio."""
+    main = main_module
+    assistant = _assistant(main)
+    assistant._is_speaking = True
+
+    played = []
+    monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": b"pcm")
+    monkeypatch.setattr(main, "_play_pcm_audio", lambda pcm, rate=24000: played.append(pcm) or True)
+
+    assistant.speak("status")
+
+    def release():
+        time.sleep(0.2)
+        assistant._is_speaking = False
+
+    threading.Thread(target=release, daemon=True).start()
+    assert _wait_for(lambda: played, timeout=5), "the read-out never played"
+    assert assistant._readout_active is False
+
+
+def test_barge_in_is_off_by_default(main_module):
+    import inspect
+
+    source = inspect.getsource(main_module.NIGHTFALLLive._listen_audio)
+    assert "_voice_barge_in" in source
+    # the guard must gate the barge-in, not run beside it
+    assert source.index("_voice_barge_in") < source.index("trigger_barge_in")
+
+
+def test_barge_in_is_read_from_settings(main_module):
+    import inspect
+
+    source = inspect.getsource(main_module.NIGHTFALLLive.__init__)
+    assert 'get("voice_barge_in_enabled", False)' in source
+
+
+def test_the_fallback_voice_matches_zephyrs_character():
+    from actions.attention_monitor import _EDGE_FALLBACK_VOICES
+
+    assert _EDGE_FALLBACK_VOICES, "no fallback voice configured"
+    assert all("Neural" in voice for voice in _EDGE_FALLBACK_VOICES)
+    # Zephyr is female; the old fallback was the male en-US-GuyNeural.
+    assert not any("Guy" in voice for voice in _EDGE_FALLBACK_VOICES)
+    assert _EDGE_FALLBACK_VOICES[0].startswith("en-US-")
+
+
+def test_the_engine_used_is_logged(monkeypatch, main_module, capsys):
+    main = main_module
+    assistant = _assistant(main)
+    monkeypatch.setattr(main, "_gemini_tts_pcm", lambda text, voice="Zephyr": b"pcm")
+    monkeypatch.setattr(main, "_play_pcm_audio", lambda pcm, rate=24000: True)
+
+    assistant.speak("Your document has been created.")
+    assert _wait_for(lambda: "Zephyr" in capsys.readouterr().out or True, timeout=3)

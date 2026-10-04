@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import os
@@ -403,6 +403,17 @@ def _speak_sapi_male(text: str) -> None:
 _speak_lock = threading.Lock()
 
 
+#: Ordered fallback voices for the neural (Edge) read-out. Zephyr is a bright
+#: female voice, so the fallback keeps that character instead of switching to
+#: the default male one.
+_EDGE_FALLBACK_VOICES = (
+    "en-US-AvaMultilingualNeural",
+    "en-US-AriaNeural",
+    "en-US-JennyNeural",
+    "en-GB-SoniaNeural",
+)
+
+
 def _speak_edge_native(text: str, force_edge: bool = False) -> None:
     global _current_player_alias, _current_audio_path
     text = (text or "").strip()
@@ -434,11 +445,17 @@ def _speak_edge_native(text: str, force_edge: bool = False) -> None:
             pass
 
         audio_path = os.path.join(tempfile.gettempdir(), f"NIGHTFALL_edge_tts_{uuid.uuid4().hex}.mp3")
-        try:
-            communicator = edge_tts.Communicate(text, voice="en-US-GuyNeural")
-            communicator.save_sync(audio_path)
-        except Exception as exc:
-            print(f"[AttentionMonitor] Edge TTS generation failed: {exc}. Falling back to offline male voice.")
+        # The fallback should sound as close to Zephyr as it can: a bright
+        # female neural voice, not the default male one.
+        for voice in _EDGE_FALLBACK_VOICES:
+            try:
+                communicator = edge_tts.Communicate(text, voice=voice)
+                communicator.save_sync(audio_path)
+                break
+            except Exception as exc:
+                print(f"[AttentionMonitor] Edge TTS ({voice}) failed: {str(exc)[:120]}")
+        else:
+            print("[AttentionMonitor] Edge TTS unavailable. Falling back to the offline voice.")
             _cleanup_current_audio()
             _speak_sapi_male(text)
             return

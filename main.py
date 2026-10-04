@@ -154,6 +154,56 @@ def _tts_available() -> bool:
     return time.time() >= _tts_blocked_until
 
 
+def _tts_cache_dir():
+    from core.user_paths import get_user_data_dir
+    path = get_user_data_dir() / "cache" / "tts"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _tts_cache_key(text: str, voice: str) -> str:
+    import hashlib
+    digest = hashlib.sha1(f"{voice}\x00{text}".encode("utf-8")).hexdigest()
+    return digest
+
+
+def _tts_cache_read(text: str, voice: str) -> bytes | None:
+    try:
+        path = _tts_cache_dir() / f"{_tts_cache_key(text, voice)}.pcm"
+        if path.is_file() and path.stat().st_size > 0:
+            return path.read_bytes()
+    except Exception:
+        pass
+    return None
+
+
+def _tts_cache_write(text: str, voice: str, pcm: bytes) -> None:
+    try:
+        path = _tts_cache_dir() / f"{_tts_cache_key(text, voice)}.pcm"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_bytes(pcm)
+        tmp.replace(path)
+    except Exception:
+        pass
+
+
+def _split_for_tts(text: str, limit: int = 900) -> list[str]:
+    """Split text at sentence boundaries so no request gets too large."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return [text] if text else []
+    parts, current = [], ""
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if current and len(current) + len(sentence) + 1 > limit:
+            parts.append(current)
+            current = sentence
+        else:
+            current = (current + " " + sentence).strip()
+    if current:
+        parts.append(current)
+    return parts
+
+
 def _gemini_tts_pcm(text: str, voice: str = "Zephyr") -> bytes | None:
     """Render *text* as Zephyr's voice, without a conversation.
 
@@ -162,6 +212,12 @@ def _gemini_tts_pcm(text: str, voice: str = "Zephyr") -> bytes | None:
     status message, call a tool, or save anything to memory.
     """
     global _tts_model_ok, _tts_blocked_until
+    if not text:
+        return None
+    cached = _tts_cache_read(text, voice)
+    if cached:
+        # Repeated status lines are free: no API call, no quota, always Zephyr.
+        return cached
     if not _tts_available():
         return None
     try:
@@ -205,6 +261,7 @@ def _gemini_tts_pcm(text: str, voice: str = "Zephyr") -> bytes | None:
                     break
             if data:
                 _tts_model_ok = model
+                _tts_cache_write(text, voice, data)
                 return data
         except Exception as exc:
             detail = str(exc)
@@ -2434,6 +2491,17 @@ class NIGHTFALLLive:
                 self.set_push_to_talk(True)
         except Exception:
             self._ptt_enabled = False
+
+        # Voice barge-in: let the spoken word interrupt the assistant. Off by
+        # default - the assistant's own voice returns through the speakers and
+        # the microphone, and treating that echo as an interruption stopped
+        # every answer a few words in.
+        try:
+            self._voice_barge_in = bool(
+                config_manager.load_settings().get("voice_barge_in_enabled", False)
+            )
+        except Exception:
+            self._voice_barge_in = False
 
         try:
             audio_devices.configure(SEND_SAMPLE_RATE, RECEIVE_SAMPLE_RATE)
@@ -4784,23 +4852,40 @@ class NIGHTFALLLive:
         self._remember_own_speech(text)
 
         def _worker():
+            # If the live session is already talking, do not talk over it:
+            # two streams through one device sound garbled. Wait for a gap.
+            deadline = time.time() + 15.0
+            while time.time() < deadline and getattr(self, "_is_speaking", False):
+                time.sleep(0.05)
             self._readout_active = True
             try:
                 self.set_speaking(True)
             except Exception:
                 pass
+            engine = "none"
             try:
                 with _TTS_PLAY_LOCK:
-                    pcm = _gemini_tts_pcm(text)
-                    if pcm and _play_pcm_audio(pcm):
+                    chunks = _split_for_tts(text)
+                    ok = bool(chunks)
+                    for chunk in chunks:
+                        pcm = _gemini_tts_pcm(chunk)
+                        if not pcm or not _play_pcm_audio(pcm):
+                            ok = False
+                            break
+                    if ok:
+                        engine = f"Zephyr ({_tts_model_ok or _TTS_MODELS[0]})"
                         return
-                # No TTS quota / offline: fall back to the local voice. Never
-                # fall back to a live turn - that is what caused the mess.
+                # No TTS quota / offline: fall back to the local neural voice.
+                # Never fall back to a live turn - that is what caused the mess.
                 from actions.attention_monitor import _speak_edge_native
-                _speak_edge_native(text)
+                engine = "fallback voice"
+                for chunk in _split_for_tts(text):
+                    _speak_edge_native(chunk)
             except Exception as exc:
                 print(f"[NIGHTFALL Speak] TTS failed: {exc}")
             finally:
+                if engine != "none":
+                    print(f"[Voice] {engine}: {text[:60]!r}")
                 try:
                     self.set_speaking(False)
                 except Exception:
@@ -5861,7 +5946,13 @@ class NIGHTFALLLive:
                                     threading.Thread(target=_process_local_speech, args=(captured,), daemon=True).start()
 
                 if NIGHTFALL_speaking:
-                    if self._echo.is_user_speech(indata, SEND_SAMPLE_RATE, lvl) and lvl > 28.0:
+                    # Voice barge-in is opt-in (Settings: "voice_barge_in_enabled").
+                    # By default the microphone is fully muted while the assistant
+                    # speaks: the echo of its own voice was being classified as
+                    # user speech, which told the server "the user interrupted"
+                    # and cut every answer off after a few words.
+                    allowed = getattr(self, "_voice_barge_in", False)
+                    if allowed and self._echo.is_user_speech(indata, SEND_SAMPLE_RATE, lvl) and lvl > 28.0:
                         loop.call_soon_threadsafe(self.trigger_barge_in)
                         data = indata.tobytes()
                     else:
