@@ -10687,6 +10687,163 @@ class SystemConnectivitySidebar(QFrame):
 
 
 
+
+
+class CustomProviderDialog(QDialog):
+    """Add or edit any AI provider (famous or brand new).
+
+    The provider only needs a base URL, a model name and a key; the wire
+    format is chosen from a preset so OpenAI-, Anthropic- and Gemini-style
+    APIs (including self-hosted ones) all work.
+    """
+
+    saved = pyqtSignal(dict)
+
+    def __init__(self, parent=None, provider: dict | None = None):
+        super().__init__(parent)
+        self._provider = dict(provider or {})
+        self.setWindowTitle("Edit AI Provider" if provider else "Add AI Provider")
+        self.setMinimumWidth(520)
+        self.setStyleSheet(
+            "QDialog { background: #0b1016; }"
+            "QLabel { color: #e8f6ff; background: transparent; border: none; }"
+            "QLineEdit, QComboBox { background: rgba(0, 229, 255, 0.05); color: #e8f6ff;"
+            " border: 1px solid rgba(0, 229, 255, 0.25); border-radius: 8px; padding: 6px 10px; }"
+            "QPushButton { background: rgba(0, 229, 255, 0.12); color: #e8f6ff;"
+            " border: 1px solid rgba(0, 229, 255, 0.35); border-radius: 8px; padding: 6px 14px; }"
+            "QPushButton:hover { background: rgba(0, 229, 255, 0.25); }"
+        )
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        form = QGridLayout()
+        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(8)
+
+        self._preset = QComboBox()
+        self._preset.addItem("Custom / other", None)
+        try:
+            from core import provider_registry
+
+            for preset in provider_registry.PRESETS:
+                self._preset.addItem(preset["name"], preset)
+        except Exception:
+            pass
+        self._preset.currentIndexChanged.connect(self._apply_preset)
+
+        self._name = QLineEdit(str(self._provider.get("name") or ""))
+        self._kind = QComboBox()
+        try:
+            from core import provider_registry
+
+            self._kind.addItems(list(provider_registry.KINDS))
+        except Exception:
+            self._kind.addItems(["openai", "anthropic", "gemini", "local"])
+        self._kind.setCurrentText(str(self._provider.get("kind") or "openai"))
+        self._base_url = QLineEdit(str(self._provider.get("base_url") or ""))
+        self._base_url.setPlaceholderText("https://api.example.com/v1")
+        self._model = QLineEdit(str(self._provider.get("model") or ""))
+        self._model.setPlaceholderText("model name, e.g. llama-3.3-70b")
+        self._key = QLineEdit(str(self._provider.get("api_key") or ""))
+        self._key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._caps = QLineEdit(", ".join(self._provider.get("caps") or ["chat"]))
+        self._caps.setPlaceholderText("chat, coding, reasoning, vision, long_context, fast, cheap")
+        self._priority = QLineEdit(str(self._provider.get("priority") or 50))
+        self._enabled = QCheckBox("Enabled")
+
+        rows = [
+            ("Preset", self._preset),
+            ("Display name", self._name),
+            ("Wire format", self._kind),
+            ("Base URL", self._base_url),
+            ("Default model", self._model),
+            ("API key", self._key),
+            ("Capabilities", self._caps),
+            ("Priority (lower first)", self._priority),
+        ]
+        for index, (label, widget) in enumerate(rows):
+            form.addWidget(QLabel(label), index, 0)
+            form.addWidget(widget, index, 1)
+        form.addWidget(self._enabled, len(rows), 1)
+        lay.addLayout(form)
+
+        hint = QLabel(
+            "Capabilities tell Jeff which requests this provider should win: "
+            "chat, coding, reasoning, vision, long_context, fast, cheap."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: rgba(255,255,255,0.45);")
+        lay.addWidget(hint)
+
+        self._status = QLabel("")
+        self._status.setWordWrap(True)
+        self._status.setStyleSheet("color: rgba(255,255,255,0.6);")
+        lay.addWidget(self._status)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        test_btn = QPushButton("Test")
+        test_btn.clicked.connect(self._test)
+        save_btn = QPushButton("Save Provider")
+        save_btn.clicked.connect(self._save)
+        buttons.addWidget(cancel)
+        buttons.addWidget(test_btn)
+        buttons.addWidget(save_btn)
+        lay.addLayout(buttons)
+
+        self._enabled.setChecked(bool(self._provider.get("enabled", True)))
+
+    def _apply_preset(self, _index: int = 0):
+        preset = self._preset.currentData()
+        if not preset:
+            return
+        if not self._name.text().strip():
+            self._name.setText(preset["name"])
+        self._kind.setCurrentText(preset.get("kind") or "openai")
+        if not self._base_url.text().strip():
+            self._base_url.setText(preset.get("base_url") or "")
+        if not self._model.text().strip():
+            self._model.setText(preset.get("model") or "")
+        caps = ", ".join(preset.get("caps") or ["chat"])
+        if not self._provider.get("caps"):
+            self._caps.setText(caps)
+
+    def _entry(self) -> dict:
+        entry = dict(self._provider)
+        entry.update({
+            "name": self._name.text().strip() or "Provider",
+            "kind": self._kind.currentText().strip(),
+            "base_url": self._base_url.text().strip(),
+            "model": self._model.text().strip(),
+            "api_key": self._key.text().strip(),
+            "caps": [c.strip() for c in self._caps.text().split(",") if c.strip()],
+            "priority": self._priority.text().strip() or "50",
+            "enabled": self._enabled.isChecked(),
+        })
+        if not entry.get("id"):
+            entry["id"] = entry["name"]
+        return entry
+
+    def _test(self):
+        try:
+            from core import provider_registry
+
+            ok, message = provider_registry.test_provider(self._entry())
+        except Exception as exc:
+            ok, message = False, str(exc)
+        self._status.setText(("✓ " if ok else "✗ ") + message)
+
+    def _save(self):
+        entry = self._entry()
+        if not entry.get("base_url"):
+            self._status.setText("A base URL is required.")
+            return
+        self.saved.emit(entry)
+        self.accept()
+
+
 class SettingsHubPage(QWidget):
     def __init__(self, navigation_callback, parent=None):
         super().__init__(parent)
@@ -11285,6 +11442,15 @@ class SystemConnectivityPage(QWidget):
         else:
             self._default_provider.setCurrentText("OpenRouter")
             
+        # Custom providers become selectable default providers too.
+        try:
+            from core import provider_registry
+
+            for provider in provider_registry.list_custom_providers():
+                if provider.get("enabled", True):
+                    self._default_provider.addItem(f"Custom: {provider['name']}", provider["id"])
+        except Exception:
+            pass
         self._default_provider.currentTextChanged.connect(self._set_default_provider)
         controls.addWidget(QLabel("Default AI Provider"))
         controls.addWidget(self._default_provider, 1)
@@ -11373,6 +11539,73 @@ class SystemConnectivityPage(QWidget):
         )
         lay1.addWidget(self._offline_mode_btn)
         lay.addWidget(card)
+
+        # ---------------------------------------------------------- providers
+        custom_card = self._card(
+            "Custom AI Providers",
+            "Add any provider - famous or brand new. Anything that speaks OpenAI, "
+            "Anthropic or Gemini format works, including self-hosted servers.",
+        )
+        cl = custom_card.layout()
+
+        self._custom_provider_rows = QVBoxLayout()
+        cl.addLayout(self._custom_provider_rows)
+
+        cust_btns = QHBoxLayout()
+        self._add_provider_btn = QPushButton("+ Add Provider")
+        self._add_provider_btn.clicked.connect(self._add_custom_provider)
+        cust_btns.addWidget(self._add_provider_btn)
+        self._provider_hint = QLabel("")
+        self._provider_hint.setWordWrap(True)
+        self._provider_hint.setStyleSheet(f"color: {C.TEXT_DIM};")
+        cust_btns.addWidget(self._provider_hint, 1)
+        cl.addLayout(cust_btns)
+        self._refresh_custom_providers()
+        lay.addWidget(custom_card)
+
+        # -------------------------------------------------------------- jeff
+        jeff_card = self._card(
+            "Jeff Model Routing",
+            "Jeff (a self-hosted jev System One API) classifies each request and "
+            "routes it to the best provider/model you have configured.",
+        )
+        jl = jeff_card.layout()
+        self._jeff_toggle = self._mk_toggle(
+            "Route requests with Jeff",
+            bool(self._load_app_settings().get("jeff_routing_enabled", False)),
+            self._toggle_jeff_routing,
+        )
+        jl.addWidget(self._jeff_toggle)
+
+        for label, key, placeholder in (
+            ("Jeff server URL", "jeff_base_url", "http://localhost:8000"),
+            ("Jeff API key", "jeff_api_key", "Bearer key (JEFF_API_KEYS)"),
+            ("Jeff model", "jeff_model", "jev-latest"),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            edit = QLineEdit(str(self._load_app_settings().get(key, "") or ""))
+            edit.setPlaceholderText(placeholder)
+            edit.textChanged.connect(lambda t, k=key: self._set_setting(k, t.strip()))
+            row.addWidget(edit, 1)
+            setattr(self, f"_jeff_{key.split('_', 1)[1]}_input", edit)
+            jl.addLayout(row)
+
+        jeff_btns = QHBoxLayout()
+        self._jeff_test_btn = QPushButton("Test Jeff Connection")
+        self._jeff_test_btn.clicked.connect(self._test_jeff_connection)
+        self._jeff_preview_btn = QPushButton("Preview Routing")
+        self._jeff_preview_btn.clicked.connect(self._preview_jeff_routing)
+        jeff_btns.addWidget(self._jeff_test_btn)
+        jeff_btns.addWidget(self._jeff_preview_btn)
+        jeff_btns.addStretch(1)
+        jl.addLayout(jeff_btns)
+
+        self._jeff_status = QLabel("")
+        self._jeff_status.setWordWrap(True)
+        self._jeff_status.setStyleSheet(f"color: {C.TEXT_MED};")
+        jl.addWidget(self._jeff_status)
+        lay.addWidget(jeff_card)
 
         # Mobile connect
         mobile = self._card("Mobile Connect", "Connect your phone and control NIGHTFALL Evo remotely.")
@@ -12718,8 +12951,205 @@ class SystemConnectivityPage(QWidget):
             self._ctrl()._win._set_startup_animation_enabled(bool(checked))
             self._ctrl()._win._refresh_startup_animation_button()
 
+    # ------------------------------------------------ custom AI providers
+    def _provider_registry(self):
+        from core import provider_registry
+
+        return provider_registry
+
+    def _refresh_custom_providers(self):
+        """Rebuild the custom-provider rows from the stored configuration."""
+        layout = getattr(self, "_custom_provider_rows", None)
+        if layout is None:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        try:
+            providers = self._provider_registry().list_custom_providers()
+        except Exception as exc:
+            providers = []
+            print(f"[Settings] provider registry unavailable: {exc}")
+
+        if not providers:
+            empty = QLabel("No custom providers yet. Add one to unlock extra models.")
+            empty.setStyleSheet(f"color: {C.TEXT_DIM};")
+            layout.addWidget(empty)
+        for provider in providers:
+            layout.addWidget(self._custom_provider_row(provider))
+
+        hint = getattr(self, "_provider_hint", None)
+        if hint is not None:
+            total = len(providers)
+            hint.setText(f"{total} custom provider{'s' if total != 1 else ''} configured.")
+
+    def _custom_provider_row(self, provider: dict) -> QFrame:
+        row = QFrame()
+        has_key = bool(provider.get("api_key"))
+        row.setStyleSheet(
+            "QFrame { background: rgba(0, 229, 255, 0.03); border: 1px solid rgba(0, 229, 255, 0.14);"
+            " border-radius: 12px; } QFrame:hover { border: 1px solid rgba(0, 229, 255, 0.35); }"
+            " QLabel { background: transparent; border: none; }"
+            " QPushButton { background: rgba(255,255,255,0.05); color: #e8f6ff; border: 1px solid"
+            " rgba(0, 229, 255, 0.3); border-radius: 8px; padding: 4px 10px; font: 600 8pt 'Segoe UI'; }"
+            " QPushButton:hover { background: rgba(0, 229, 255, 0.2); }"
+        )
+        lay = QHBoxLayout(row)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(10)
+
+        meta = QVBoxLayout()
+        name = QLabel(f"{provider.get('name')}   ·   {provider.get('kind')}")
+        name.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        name.setStyleSheet(f"color: {C.WHITE};")
+        meta.addWidget(name)
+        detail = QLabel(
+            f"{provider.get('base_url') or '(no base url)'}\n"
+            f"model: {provider.get('model') or '(none)'}   ·   "
+            f"caps: {', '.join(provider.get('caps') or []) or 'chat'}   ·   "
+            f"key: {'set' if has_key else 'missing'}"
+        )
+        detail.setWordWrap(True)
+        detail.setStyleSheet(f"color: {C.TEXT_DIM};")
+        meta.addWidget(detail)
+        lay.addLayout(meta, 1)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(6)
+        edit_btn = QPushButton("Edit")
+        edit_btn.clicked.connect(lambda _=False, pv=provider: self._add_custom_provider(pv))
+        test_btn = QPushButton("Test")
+        test_btn.clicked.connect(lambda _=False, pv=provider: self._test_custom_provider(pv))
+        del_btn = QPushButton("Remove")
+        del_btn.clicked.connect(lambda _=False, pv=provider: self._remove_custom_provider(pv))
+        for button in (edit_btn, test_btn, del_btn):
+            btns.addWidget(button)
+        lay.addLayout(btns)
+        return row
+
+    def _add_custom_provider(self, provider: dict | None = None):
+        dialog = CustomProviderDialog(self, provider=provider)
+        dialog.saved.connect(self._on_custom_provider_saved)
+        dialog.exec()
+
+    def _on_custom_provider_saved(self, entry: dict):
+        try:
+            self._provider_registry().save_custom_provider(entry)
+            self._refresh_custom_providers()
+            if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+                self._ctrl().write_log(f"SYS: AI provider '{entry.get('name')}' saved.")
+        except Exception as exc:
+            if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+                self._ctrl().write_log(f"ERR: Could not save provider: {exc}")
+
+    def _remove_custom_provider(self, provider: dict):
+        try:
+            self._provider_registry().remove_custom_provider(provider.get("id") or provider.get("name"))
+            self._refresh_custom_providers()
+            if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+                self._ctrl().write_log(f"SYS: AI provider '{provider.get('name')}' removed.")
+        except Exception as exc:
+            if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+                self._ctrl().write_log(f"ERR: Could not remove provider: {exc}")
+
+    def _test_custom_provider(self, provider: dict):
+        try:
+            ok, message = self._provider_registry().test_provider(provider)
+        except Exception as exc:
+            ok, message = False, str(exc)
+        text = f"{provider.get('name')}: {message}"
+        if getattr(self, "_provider_hint", None) is not None:
+            self._provider_hint.setText(text)
+        if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+            self._ctrl().write_log(f"SYS: {text}")
+
+    # ------------------------------------------------------- jeff routing
+    def _toggle_jeff_routing(self, checked: bool):
+        self._set_setting("jeff_routing_enabled", bool(checked))
+        if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+            self._ctrl().write_log(
+                f"SYS: Jeff model routing {'enabled' if checked else 'disabled'}."
+            )
+
+    def _test_jeff_connection(self):
+        from core import jeff_router
+
+        settings = self._load_app_settings()
+        client = jeff_router.JeffClient(
+            base_url=str(settings.get("jeff_base_url") or jeff_router.DEFAULT_JEFF_BASE_URL),
+            api_key=str(settings.get("jeff_api_key") or ""),
+            model=str(settings.get("jeff_model") or jeff_router.DEFAULT_JEFF_MODEL),
+            timeout=8.0,
+        )
+        healthy = client.health(force=True)
+        if getattr(self, "_jeff_status", None) is not None:
+            self._jeff_status.setText(
+                f"Jeff server {'reachable' if healthy else 'unreachable'} at {client.base_url}"
+                + ("" if healthy else " — start it with: JEFF_API_KEYS=devkey uv run jeff")
+            )
+        if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+            self._ctrl().write_log(
+                f"SYS: Jeff server {'reachable' if healthy else 'unreachable'} at {client.base_url}"
+            )
+
+    def _preview_jeff_routing(self):
+        from core import jeff_router
+
+        settings = self._load_app_settings()
+        client = None
+        if settings.get("jeff_routing_enabled"):
+            client = jeff_router.JeffClient(
+                base_url=str(settings.get("jeff_base_url") or jeff_router.DEFAULT_JEFF_BASE_URL),
+                api_key=str(settings.get("jeff_api_key") or ""),
+                model=str(settings.get("jeff_model") or jeff_router.DEFAULT_JEFF_MODEL),
+            )
+        samples = [
+            "fix this python traceback",
+            "explain in detail how a CPU pipeline works",
+            "hi there",
+            "what does this screenshot say?",
+        ]
+        lines = []
+        for sample in samples:
+            try:
+                decision = jeff_router.route(sample, client=client)
+                lines.append(f"• {sample}\n    → {decision.describe()}")
+            except Exception as exc:
+                lines.append(f"• {sample}\n    → routing failed: {exc}")
+        text = "\n".join(lines)
+        if getattr(self, "_jeff_status", None) is not None:
+            self._jeff_status.setText(text)
+        if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+            self._ctrl().write_log(f"SYS: Jeff routing preview\n{text}")
+
     def _set_default_provider(self, text: str):
         raw = (text or "").strip().lower()
+        if raw.startswith("custom:"):
+            # A user-added provider: keep its id as the provider setting.
+            provider_id = ""
+            try:
+                from core import provider_registry
+
+                wanted = raw.split(":", 1)[1].strip()
+                for provider in provider_registry.list_custom_providers():
+                    if str(provider.get("name", "")).strip().lower() == wanted:
+                        provider_id = provider["id"]
+                        break
+            except Exception:
+                provider_id = ""
+            if provider_id:
+                self._set_setting("default_ai_provider", provider_id)
+                self._set_setting("offline_mode_enabled", False)
+                if hasattr(self, "_local_ai_widget"):
+                    self._local_ai_widget.setVisible(False)
+                if hasattr(self, "_sys_provider"):
+                    self._sys_provider.setText(provider_id)
+                if self._ctrl() and hasattr(self._ctrl(), "write_log"):
+                    self._ctrl().write_log(f"SYS: Default AI provider set to {provider_id}.")
+                return
         if raw.startswith("google") or raw == "gemini":
             provider = "Gemini"
             self._set_setting("offline_mode_enabled", False)

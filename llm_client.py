@@ -62,8 +62,39 @@ class UnifiedAIClient:
             logger.error(f"[LLM Client] Local AI Request Failed: {e}")
             return None
 
+    def _custom_provider(self):
+        """Custom provider selected as the default, if any."""
+        if self._provider in ("Local", "OpenRouter", "Gemini", "Google Gemini", "Anthropic"):
+            return None
+        try:
+            from core import provider_registry
+
+            return provider_registry.get_provider(self._provider)
+        except Exception:
+            return None
+
+    def _custom_messages(self, prompt: str, system: str, history: Optional[list[dict]]) -> list[dict]:
+        messages = [{"role": "system", "content": system}]
+        messages.extend(history or [])
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
     def chat(self, prompt: str, system: str = "You are a helpful assistant.", history: Optional[list[dict]] = None, model: Optional[str] = None, max_tokens: int = 4096, temperature: float = 0.7) -> str:
         self.reload_settings()
+        custom = self._custom_provider()
+        if custom is not None:
+            from core import provider_registry
+
+            reply = provider_registry.chat(
+                custom,
+                self._custom_messages(prompt, system, history),
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            if reply:
+                return reply
+            raise RuntimeError(f"{custom.get('name')} returned no content.")
         if self._provider == "Local":
             messages = [{"role": "system", "content": system}]
             if history:

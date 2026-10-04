@@ -8,6 +8,7 @@ This module writes the complete body (title, sections, prose) and hands it to
 
 from __future__ import annotations
 
+import json as _json
 import re
 from typing import Callable, Optional
 
@@ -184,6 +185,35 @@ def generate_document_from_prompt(
         models=DOCUMENT_MODELS,
         timeout=DOCUMENT_TIMEOUT,
     )
+
+    if data is None:
+        # No Gemini key (or it failed): use a custom provider, Jeff-routed.
+        try:
+            from core import jeff_router, provider_registry
+
+            custom = [p for p in provider_registry.configured_providers() if p.get("custom")]
+            if custom:
+                try:
+                    client = jeff_router.client_from_settings()
+                except Exception:
+                    client = None
+                decision = jeff_router.route(prompt, client=client, providers=custom)
+                raw = provider_registry.chat(
+                    decision.provider,
+                    [
+                        {"role": "system", "content": DOCUMENT_SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.3,
+                    max_tokens=8192,
+                )
+                if raw:
+                    try:
+                        data = _json.loads(raw)
+                    except Exception:
+                        data = {"title": "", "content": raw}
+        except Exception as exc:
+            print(f"[DocumentGen] custom provider fallback failed: {exc}")
 
     doc_title = (title or "").strip()
     doc_subtitle = (subtitle or "").strip()

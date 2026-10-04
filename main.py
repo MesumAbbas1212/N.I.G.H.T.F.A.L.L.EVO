@@ -2395,6 +2395,49 @@ class NIGHTFALLLive:
         if not blobs:
             return ""
         data, mime = blobs[0]
+        # Custom providers (registered in Settings) get first crack at the image.
+        try:
+            import base64
+
+            from core import jeff_router, provider_registry
+
+            vision_providers = [
+                p for p in provider_registry.configured_providers()
+                if "vision" in {str(c).lower() for c in (p.get("caps") or [])}
+            ]
+            if vision_providers:
+                client = self._jeff_client()
+                try:
+                    decision = jeff_router.route(
+                        text or "describe this image",
+                        client=client,
+                        providers=vision_providers,
+                    )
+                except Exception:
+                    decision = None
+                ordered = vision_providers
+                if decision is not None:
+                    ordered = [decision.provider] + [
+                        p for p in vision_providers if p.get("id") != decision.provider_id
+                    ]
+                    try:
+                        self.ui.write_log(f"SYS: {decision.describe()}")
+                    except Exception:
+                        pass
+                for provider in ordered:
+                    try:
+                        reply = provider_registry.vision(
+                            provider,
+                            text or "Describe this image concisely.",
+                            base64.b64encode(data).decode("utf-8"),
+                            mime,
+                        )
+                        if reply:
+                            return reply.strip()
+                    except Exception as exc:
+                        print(f"[NIGHTFALL EVO] {provider.get('name')} vision failed: {exc}")
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Custom vision providers failed: {exc}")
         try:
             from actions.screen_processor import screen_process
             if screen_process(parameters={"angle": "screen", "text": text}, player=self.ui, image_bytes=data):
@@ -3977,6 +4020,42 @@ class NIGHTFALLLive:
             except Exception as e:
                 return f"Tool execution failed: {e}"
 
+    def _jeff_client(self):
+        """Jeff routing client from settings (None when Jeff routing is off)."""
+        try:
+            from core import jeff_router
+
+            return jeff_router.client_from_settings(config_manager.load_settings())
+        except Exception as exc:
+            print(f"[NIGHTFALL EVO] Jeff routing unavailable: {exc}")
+            return None
+
+    def _routed_reply(self, text: str, memory_ctx: str = "") -> str:
+        """Answer with whichever provider Jeff routes the request to."""
+        from core import jeff_router
+        from core import provider_registry
+
+        client = self._jeff_client()
+        decision = jeff_router.route(text, client=client)
+        try:
+            self.ui.write_log(f"SYS: {decision.describe()}")
+        except Exception:
+            pass
+        system = (
+            "You are NIGHTFALL Evo, a calm, direct and professional desktop assistant. "
+            "Answer concisely and never mention internal routing details."
+        )
+        request = f"{memory_ctx}\n\nCurrent User Request:\n{text}" if memory_ctx else text
+        reply = provider_registry.chat(
+            decision.provider,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": request},
+            ],
+            temperature=0.6,
+        )
+        return (reply or "").strip()
+
     def _fallback_reply(self, text: str, memory_ctx: str = ""):
         try:
             self.ui.set_state("THINKING")
@@ -4000,8 +4079,29 @@ class NIGHTFALLLive:
             is_cloud_gemini = configured_provider in ("Gemini", "Google Gemini")
             is_cloud_openrouter = configured_provider == "OpenRouter"
 
+            # 0. Jeff model routing: let the router pick the provider/model.
+            if app_settings.get("jeff_routing_enabled", False) and not is_offline_mode:
+                try:
+                    from core import provider_registry
+
+                    if any(p.get("custom") for p in provider_registry.configured_providers()):
+                        try:
+                            self.ui.update_task_workspace(
+                                status="Routing (Jeff)",
+                                output="Jeff is picking the best model for this request...",
+                                percent=45,
+                            )
+                        except Exception:
+                            pass
+                        reply = self._routed_reply(text, memory_ctx=memory_ctx)
+                        if reply:
+                            print("[NIGHTFALL EVO] 🧭 Jeff routed the request to a custom provider.")
+                except Exception as e_jeff:
+                    print(f"[NIGHTFALL EVO] Jeff routing failed: {e_jeff}")
+                    reply = ""
+
             # 1. If user explicitly selected Google Gemini, run Gemini FIRST
-            if is_cloud_gemini and not is_offline_mode:
+            if not reply and is_cloud_gemini and not is_offline_mode:
                 try:
                     self.ui.update_task_workspace(
                         status="Thinking (Gemini)",
@@ -4016,7 +4116,7 @@ class NIGHTFALLLive:
                         self._use_openrouter_first = True
 
             # 2. If user explicitly selected OpenRouter, run OpenRouter FIRST
-            elif is_cloud_openrouter and not is_offline_mode:
+            elif not reply and is_cloud_openrouter and not is_offline_mode:
                 try:
                     self.ui.update_task_workspace(
                         status="Thinking (OpenRouter)",

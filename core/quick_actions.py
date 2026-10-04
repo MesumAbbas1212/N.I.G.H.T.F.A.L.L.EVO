@@ -161,6 +161,41 @@ def _load_config(filename: str) -> dict:
     return {}
 
 
+def _custom_provider_quick_reply(prompt: str) -> str:
+    """Completion on whichever custom provider Jeff routes the request to."""
+    from core import jeff_router, provider_registry
+
+    client = None
+    try:
+        client = jeff_router.client_from_settings(_load_config("app_settings.json"))
+    except Exception:
+        client = None
+    decision = jeff_router.route(prompt, client=client)
+    reply = provider_registry.chat(
+        decision.provider,
+        [
+            {"role": "system", "content": _QA_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+    )
+    return (reply or "").strip()
+
+
+def _custom_provider_backends() -> list:
+    """A single backend that answers on a Jeff-routed custom provider."""
+    try:
+        from core import provider_registry
+
+        custom = [p for p in provider_registry.configured_providers() if p.get("custom")]
+    except Exception as exc:
+        print(f"[QuickActions] custom provider backends unavailable: {exc}")
+        return []
+    if not custom:
+        return []
+    return [(_custom_provider_quick_reply, custom[0])]
+
+
 def _provider_backends() -> list:
     """Ordered list of tool-free completion backends for the current setup."""
     settings = _load_config("app_settings.json")
@@ -169,9 +204,23 @@ def _provider_backends() -> list:
     if offline or provider == "Local":
         # Air-gapped / local mode: never leave the machine.
         return [_local_quick_reply]
+    backends: list = []
+    # Custom providers first (Jeff orders them when routing is enabled).
+    for backend, _provider in _custom_provider_backends():
+        backends.append(backend)
     if provider == "OpenRouter":
-        return [_openrouter_quick_reply, _gemini_quick_reply, _local_quick_reply]
-    return [_gemini_quick_reply, _openrouter_quick_reply, _local_quick_reply]
+        backends.extend([_openrouter_quick_reply, _gemini_quick_reply, _local_quick_reply])
+    else:
+        backends.extend([_gemini_quick_reply, _openrouter_quick_reply, _local_quick_reply])
+    # De-duplicate while preserving order.
+    seen: set = set()
+    ordered: list = []
+    for backend in backends:
+        if backend in seen:
+            continue
+        seen.add(backend)
+        ordered.append(backend)
+    return ordered
 
 
 def _gemini_quick_reply(prompt: str) -> str:

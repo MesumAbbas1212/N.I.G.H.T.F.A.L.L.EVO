@@ -97,6 +97,25 @@
 ### 🧠 Long-Term Memory & Identity
 - Adaptive memory engine stores personal user preferences, ongoing projects, and custom instructions across sessions.
 
+### 🔑 Any Provider, Any Model
+- **Custom API keys**: add keys for any provider from *Settings → AI Providers → Custom AI Providers* — famous ones
+  (Groq, Together, Mistral, DeepSeek, Cerebras, xAI, Fireworks, Perplexity, Cohere, AI21, OpenRouter, Anthropic,
+  Google, …) or brand-new services. Each entry stores its own key, base URL, default model and capabilities, and any
+  OpenAI-, Anthropic- or Gemini-compatible endpoint works — including self-hosted Ollama, LM Studio or vLLM servers.
+- A custom provider can also be selected as the **default AI provider**, and custom providers are used automatically
+  for Quick Actions, vision fallbacks and document generation.
+
+### 🧭 Jeff Model Routing
+- [jeff](https://github.com/logan-markewich/jeff) is a self-hosted drop-in replacement for TypeSafe's *jev System One
+  API*: given a request it answers small classification questions (`choice`, `score`, `noul`) about it.
+- NIGHTFALL Evo asks Jeff *which capability a request needs* and *how complex it is*, then routes the request to the
+  best provider/model you have configured (coding → a coder, long documents → a large-context model, screenshots → a
+  vision model, quick chat → the fastest/cheapest one). The decision is logged in the chat
+  (`Jeff → Groq [llama-3.3-70b] (capability=coding, complexity=low, router=jeff)`).
+- Run your own server with `JEFF_API_KEYS=devkey uv run jeff`, then enable it in
+  *Settings → Jeff Model Routing* (server URL, key, model). Without a server, a built-in heuristic router is used, so
+  routing never breaks.
+
 ---
 
 ## 🚀 Quick Start
