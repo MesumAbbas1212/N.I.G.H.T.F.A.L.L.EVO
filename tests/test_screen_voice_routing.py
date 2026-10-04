@@ -14,6 +14,7 @@ voice (Charon).  These tests pin the routing rules that keep a single voice:
 import asyncio
 import importlib
 import inspect
+import time
 
 import pytest
 
@@ -237,3 +238,60 @@ def test_the_cooldown_expires(monkeypatch, main_module):
     asyncio.run(assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "screen"})))
 
     assert len(captures) == 2
+
+
+# -- a user-attached image is never re-captured ------------------------------
+# The live model called screen_process even though the user's snip was already
+# in the conversation, so the image was attached twice and the assistant
+# answered twice. These tests pin the guard at both levels: the tool refuses to
+# capture while a user image is current, and the session is told not to ask.
+
+def test_screen_process_defers_to_a_user_attached_image(monkeypatch, main_module):
+    main = main_module
+    assistant = _assistant(monkeypatch, main)
+    assistant._last_user_image_at = time.time()  # the snip is the subject
+    captures = []
+
+    monkeypatch.setattr(
+        main.NIGHTFALLLive, "_capture_screen_bytes",
+        lambda self: captures.append(1) or b"jpeg",
+    )
+    monkeypatch.setattr(main, "screen_process", lambda **kwargs: True)
+
+    response = asyncio.run(
+        assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "translate this"}))
+    )
+
+    assert captures == [], "the screen must not be captured again"
+    assert assistant._pending_screen_frame is None
+    assert "already attached" in response.response["result"].lower()
+    assert "do not repeat" in response.response["result"].lower()
+
+
+def test_the_guard_expires_so_a_later_screen_request_still_works(monkeypatch, main_module):
+    main = main_module
+    assistant = _assistant(monkeypatch, main)
+    assistant._last_user_image_at = time.time() - 600  # long ago
+    captures = []
+
+    monkeypatch.setattr(
+        main.NIGHTFALLLive, "_capture_screen_bytes",
+        lambda self: captures.append(1) or b"jpeg",
+    )
+    monkeypatch.setattr(main, "screen_process", lambda **kwargs: True)
+
+    asyncio.run(assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "screen"})))
+
+    assert len(captures) == 1, "a fresh screen request must still capture"
+
+
+def test_the_session_is_told_about_attached_images():
+    """The live instruction must forbid screen_process for attached images."""
+    import inspect
+
+    import main
+
+    source = inspect.getsource(main.NIGHTFALLLive._build_config)
+    assert "ATTACHED IMAGES" in source
+    declaration = [t for t in main.TOOL_DECLARATIONS if t["name"] == "screen_process"][0]
+    assert "Do NOT call it when the user's message already carries an image" in declaration["description"]

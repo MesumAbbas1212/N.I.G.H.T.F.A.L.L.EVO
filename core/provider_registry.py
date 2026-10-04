@@ -378,7 +378,7 @@ def sync_legacy_providers(entries: dict) -> int:
 #: Probing is a cheap socket connect, cached so routing never blocks on it.
 _LOCAL_PROBE_TTL_UP = 60.0
 _LOCAL_PROBE_TTL_DOWN = 120.0
-_local_probe: dict = {"at": 0.0, "up": False, "key": ""}
+_local_probe: dict = {}
 
 
 def _probe_local(base_url: str) -> bool:
@@ -399,38 +399,78 @@ def _probe_local(base_url: str) -> bool:
         return False
 
 
-def local_ai_running(force: bool = False) -> bool:
-    """Cached check for a running Ollama / LM Studio / vLLM server."""
-    local = next((p for p in BUILTIN_PROVIDERS if p["id"] == "local"), None)
-    base_url = str((local or {}).get("base_url") or "http://localhost:11434/v1")
+def local_ai_running(base_url: str = "", force: bool = False) -> bool:
+    """Cached check for a running local AI server (Ollama, LM Studio, ...).
+
+    The result is kept per address, so a provider added in Settings with its
+    own localhost port is probed on its own merits.
+    """
+    if not base_url:
+        local = next((p for p in BUILTIN_PROVIDERS if p["id"] == "local"), None)
+        base_url = str((local or {}).get("base_url") or "http://localhost:11434/v1")
+    base_url = str(base_url)
+    entry = _local_probe.setdefault(base_url, {"at": 0.0, "up": False})
     now = time.time()
-    ttl = _LOCAL_PROBE_TTL_UP if _local_probe["up"] else _LOCAL_PROBE_TTL_DOWN
-    if (not force and _local_probe["key"] == base_url
-            and (now - float(_local_probe["at"])) < ttl):
-        return bool(_local_probe["up"])
+    ttl = _LOCAL_PROBE_TTL_UP if entry["up"] else _LOCAL_PROBE_TTL_DOWN
+    if not force and (now - float(entry["at"])) < ttl:
+        return bool(entry["up"])
     up = _probe_local(base_url)
-    _local_probe.update({"at": now, "up": up, "key": base_url})
+    entry.update({"at": now, "up": up})
     return up
 
 
 def configured_providers() -> list[dict]:
     """Providers that can actually be called right now.
 
-    A keyless local provider only counts while its server answers, so routing
-    never sends a request to an Ollama that is not running.
+    Every provider with a "local" wire format is probed first: sending a
+    request to an Ollama / LM Studio server that is not running used to be the
+    reason a Quick Action reported "quota used up" - the routed provider was
+    simply a dead localhost server and the real error came from the fallback.
     """
     ready = []
     for provider in all_providers():
         if provider.get("kind") == "local":
-            if provider.get("custom"):
-                # A user-added local provider is an explicit choice: keep it,
-                # but note whether it answered so callers can warn.
-                ready.append(provider)
-            elif local_ai_running():
+            if local_ai_running(base_url=provider.get("base_url")):
                 ready.append(provider)
         elif provider.get("api_key"):
             ready.append(provider)
     return ready
+
+
+def chat_failover(
+    messages: list[dict],
+    providers: Optional[list] = None,
+    order: Optional[list] = None,
+    **kwargs,
+):
+    """Ask providers in order until one answers.
+
+    Returns ``(reply, provider, errors)`` and raises only when every provider
+    failed. The collected errors let the caller explain *why*: a dead localhost
+    server and an exhausted cloud quota are different problems and must never
+    be reported as the same thing.
+    """
+    candidates: list[dict] = []
+    for provider in list(order or []) + list(providers or configured_providers()):
+        if provider and provider not in candidates:
+            candidates.append(provider)
+    errors: list[str] = []
+    for provider in candidates:
+        label = provider.get("name") or provider.get("id") or "provider"
+        if provider.get("kind") == "local" and not local_ai_running(
+            base_url=provider.get("base_url")
+        ):
+            errors.append(f"{label}: local server not running")
+            continue
+        try:
+            reply = chat(provider, messages, **kwargs)
+        except Exception as exc:
+            errors.append(f"{label}: {exc}")
+            continue
+        if reply and reply.strip():
+            return reply.strip(), provider, errors
+        errors.append(f"{label}: empty reply")
+    raise RuntimeError("; ".join(errors) or "no AI provider available")
 
 
 def provider_label(provider: dict) -> str:

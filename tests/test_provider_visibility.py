@@ -45,6 +45,14 @@ def skill(tmp_path, monkeypatch):
     return module
 
 
+@pytest.fixture()
+def store_providers(store):
+    """Two registered providers, in registry order."""
+    _settings_provider("Agnes AI", "https://api.agnes-ai.com/v1")
+    _settings_provider("AINative Studio", "https://api.ainative.studio/api/v1")
+    return registry.configured_providers
+
+
 def _settings_provider(name="Agnes AI", base_url="https://api.agnes-ai.com/v1"):
     """Exactly what the Settings dialog saves."""
     return registry.save_custom_provider({
@@ -174,3 +182,133 @@ def test_routing_prefers_a_configured_custom_provider(store):
     _settings_provider()
     decision = jeff_router.route("write me a python script", client=None)
     assert decision.provider["id"] == "agnes-ai"
+
+# -- provider failover -------------------------------------------------------
+# A Quick Action used to report "quota used up" when the routed provider was a
+# dead localhost server: the first provider failed, the chain fell through to
+# Gemini (whose free tier was exhausted) and the message blamed the quota.
+
+def test_failover_tries_every_provider_before_giving_up(store_providers):
+    from core import provider_registry as reg
+
+    attempts = []
+
+    def fake_chat(provider, messages, **kwargs):
+        attempts.append(provider["id"])
+        if provider["id"] != "agnes-ai":
+            raise RuntimeError("Connection refused")
+        return "translated text"
+
+    import types
+    import sys
+
+    saved = reg.chat
+    reg.chat = fake_chat
+    try:
+        reply, provider, errors = reg.chat_failover(
+            [{"role": "user", "content": "hola"}],
+            providers=store_providers(),
+        )
+    finally:
+        reg.chat = saved
+
+    assert reply == "translated text"
+    assert provider["id"] == "agnes-ai"
+    assert len(attempts) >= 2, attempts
+    assert any("Connection refused" in e for e in errors)
+
+
+def test_failover_skips_a_local_server_that_is_not_running(monkeypatch, store_providers):
+    from core import provider_registry as reg
+
+    dead_local = {
+        "id": "9router", "name": "9router", "kind": "local",
+        "base_url": "http://localhost:3000/v1", "model": "m", "api_key": "",
+        "caps": ["chat"], "custom": True, "enabled": True,
+    }
+    providers = store_providers()
+    monkeypatch.setattr(reg, "local_ai_running", lambda base_url="", force=False: False)
+
+    tried = []
+
+    def fake_chat(provider, messages, **kwargs):
+        tried.append(provider["id"])
+        return "ok"
+
+    saved = reg.chat
+    reg.chat = fake_chat
+    try:
+        # it is offered first (highest priority) and must still be skipped
+        reply, provider, errors = reg.chat_failover(
+            [{"role": "user", "content": "x"}],
+            providers=providers,
+            order=[dead_local],
+        )
+    finally:
+        reg.chat = saved
+
+    assert "9router" not in tried, "a dead local server must not be called"
+    assert any("local server not running" in e for e in errors)
+
+
+def test_dead_local_providers_are_not_routed_to(monkeypatch, store_providers):
+    from core import provider_registry as reg
+
+    monkeypatch.setattr(reg, "local_ai_running", lambda base_url="", force=False: False)
+    providers = reg.list_custom_providers() + [{
+        "id": "omniroute", "name": "OmniRoute", "kind": "local",
+        "base_url": "http://localhost:20128/v1", "model": "auto", "api_key": "",
+        "caps": ["chat", "coding"], "custom": True, "enabled": True,
+    }]
+    saved = reg.list_custom_providers
+    reg.list_custom_providers = lambda: providers
+    try:
+        ready = [p["id"] for p in reg.configured_providers()]
+    finally:
+        reg.list_custom_providers = saved
+
+    assert "omniroute" not in ready
+
+
+def test_connectivity_failure_is_not_reported_as_a_quota_problem():
+    from core import quick_actions as qa
+
+    message = qa.friendly_quick_action_error(
+        "translate",
+        "9router: Connection refused; gemini: 429 RESOURCE_EXHAUSTED",
+    )
+    # The quota is real here, so it is mentioned - but the sentence must not
+    # claim quota when only servers were unreachable (next test).
+    assert "quota" in message.lower()
+
+
+def test_unreachable_providers_get_a_connectivity_message():
+    from core import quick_actions as qa
+
+    message = qa.friendly_quick_action_error(
+        "translate", "OmniRoute: Connection refused; Ollama: local server not running",
+    )
+    assert "quota" not in message.lower()
+    assert "answered" in message.lower() or "start" in message.lower()
+
+
+def test_quick_action_uses_failover_across_providers(monkeypatch):
+    from core import quick_actions as qa
+
+    calls = []
+
+    def fake_failover(messages, providers=None, order=None, **kwargs):
+        calls.append([p["id"] for p in (providers or [])])
+        return "translated", (providers or [{}])[0], ["first: connection refused"]
+
+    import core.provider_registry as reg
+
+    monkeypatch.setattr(reg, "chat_failover", fake_failover)
+    monkeypatch.setattr(reg, "configured_providers", lambda: [{
+        "id": "agnes-ai", "name": "Agnes AI", "kind": "openai",
+        "base_url": "https://api.agnes-ai.com/v1", "api_key": "k",
+        "model": "agnes-2.0-flashfree", "caps": ["chat"], "custom": True,
+    }])
+
+    assert qa._custom_provider_quick_reply("translate this") == "translated"
+    assert calls and calls[0] == ["agnes-ai"]

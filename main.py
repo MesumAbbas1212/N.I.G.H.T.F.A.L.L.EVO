@@ -1121,11 +1121,14 @@ TOOL_DECLARATIONS = [
     {
         "name": "screen_process",
         "description": (
-            "Captures and analyzes the screen or webcam image. "
-            "MUST be called when user asks what is on screen, what you see, "
-            "analyze my screen, look at camera, etc. "
-            "You have NO visual ability without this tool. "
-            "After calling this tool, stay SILENT — the vision module speaks directly."
+            "Captures and analyzes the live screen or webcam. "
+            "Call it when the user asks about their screen and NO image was attached to their message "
+            "(what is on my screen, what do you see, analyze my screen, look at the camera). "
+            "You have no visual ability without this tool for the live screen. "
+            "Do NOT call it when the user's message already carries an image (a screenshot snip or an "
+            "attachment shown in the chat): that image is what they are asking about - answer from it "
+            "directly, in one reply, and never call this tool for it. "
+            "Never call this tool twice for the same question."
         ),
         "parameters": {
             "type": "OBJECT",
@@ -2130,6 +2133,10 @@ class NIGHTFALLLive:
         #: (image bytes, question) captured for the live session by the
         #: screen_process tool, delivered right after the tool response.
         self._pending_screen_frame = None
+        #: When the live session was last handed an image the *user* supplied
+        #: (a snip or attachment). While that image is the subject of the
+        #: conversation, screen_process must not capture the screen again.
+        self._last_user_image_at = 0.0
         #: When the screen was last captured. The model sometimes calls
         #: screen_process several times in one turn; the cooldown turns the
         #: repeats into "use the image you already have" instead of capturing
@@ -2338,10 +2345,18 @@ class NIGHTFALLLive:
 
             parts: list[dict] = []
             blobs: list[tuple[bytes, str]] = []
+            seen_paths: set = set()
             for image in images:
+                path = str((image or {}).get("path") or "").strip()
+                # The same snip is pending on both chat panes; make sure it is
+                # sent to the model exactly once.
+                if path and path in seen_paths:
+                    continue
+                if path:
+                    seen_paths.add(path)
                 try:
                     from core.image_blob import prepare_image_blob
-                    blob = prepare_image_blob(image.get("path"))
+                    blob = prepare_image_blob(path)
                 except Exception:
                     blob = None
                 if not blob:
@@ -2368,6 +2383,12 @@ class NIGHTFALLLive:
                             ),
                             self._loop,
                         )
+                        # Remember that the subject of the conversation is now
+                        # the user's own image: screen_process must not capture
+                        # the screen again while this image is what is being
+                        # discussed (it caused duplicate images and answers).
+                        self._last_user_image_at = time.time()
+                        self._last_screen_capture_at = time.time()
                         # The voice session answers; its transcript lands in chat.
                         reply = ""
                     except Exception as exc:
@@ -2441,6 +2462,18 @@ class NIGHTFALLLive:
             return True
         except Exception as exc:
             print(f"[NIGHTFALL EVO] Screen send to live session failed: {exc}")
+            return False
+
+    def _user_image_is_current(self, window: float = 90.0) -> bool:
+        """True while the image the user attached is the subject of the chat.
+
+        The live model sometimes calls screen_process even though the user's
+        own screenshot is already in the conversation - which produced a second
+        capture and a second, duplicate answer.
+        """
+        try:
+            return (time.time() - float(getattr(self, "_last_user_image_at", 0.0))) < window
+        except Exception:
             return False
 
     def _screen_frame_is_fresh(self, window: float = 20.0) -> bool:
@@ -4573,6 +4606,13 @@ class NIGHTFALLLive:
             parts.append(mem_str)
         parts.append(sys_prompt)
         parts.append(
+            "ATTACHED IMAGES: when the user's message already includes an image (a screenshot snip or an "
+            "attachment shown in the chat), that image is exactly what they are asking about. Look at it and "
+            "answer in ONE reply. Do NOT call screen_process for it - that captures a fresh screenshot and "
+            "produces a second, duplicate answer. Call screen_process only when the user asks about the live "
+            "screen and no image was attached."
+        )
+        parts.append(
             "Wake-word mode: if the microphone is muted, still listen for the words 'NIGHTFALL Evo', 'hey', 'hi', and 'hello'. "
             "When you hear one of these activation cues, keep the session friendly and concise, "
             "and wait for the user's next command. "
@@ -5011,18 +5051,30 @@ class NIGHTFALLLive:
                     or getattr(self, "_last_user_utterance", "")
                     or "What do you see on my screen? Answer briefly."
                 )
+                if self._user_image_is_current():
+                    # The user attached a screenshot in this conversation; the
+                    # model has already seen it (and may already have answered).
+                    # Capturing again would duplicate the image and the reply,
+                    # so this call is answered from the attachment instead.
+                    self._pending_screen_frame = None
+                    result = (
+                        "The image the user is asking about is already attached to this "
+                        "conversation and you have already seen it. Do not capture the "
+                        "screen. Answer from that attached image only, and if you have "
+                        "already answered the user's question, do not repeat it."
+                    )
                 # The voice session asked for the screen: capture it and hand
                 # the frame straight back to that same session so the answer
                 # comes in the app's single voice (Zephyr).  The standalone
                 # vision module is only used when no live session exists.
-                if self._live_session_available() and not getattr(self.ui, "muted", False):
+                elif self._live_session_available() and not getattr(self.ui, "muted", False):
                     if self._screen_frame_is_fresh():
                         # The model asked for the screen again in the same turn:
                         # do not capture and describe the same screenshot twice.
                         result = (
-                            "You already received a screenshot of this screen a moment ago "
-                            "(it is attached to this conversation). Answer the user's question "
-                            "from that image instead of capturing the screen again."
+                            "You already received a screenshot of this screen a moment ago and it "
+                            "is attached to this conversation - do not capture it again, and do "
+                            "not repeat an answer you have already given."
                         )
                     else:
                         frame = await asyncio.get_event_loop().run_in_executor(

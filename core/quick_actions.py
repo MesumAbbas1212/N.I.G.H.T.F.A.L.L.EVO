@@ -191,23 +191,43 @@ def _load_config(filename: str) -> dict:
 
 
 def _custom_provider_quick_reply(prompt: str) -> str:
-    """Completion on whichever custom provider Jeff routes the request to."""
+    """Completion on whichever custom provider Jeff routes the request to.
+
+    Providers are tried in routed order until one answers: a single dead
+    server (a localhost provider that is not running, say) must not make the
+    whole Quick Action fail while five healthy providers sit unused.
+    """
     from core import jeff_router, provider_registry
 
-    client = None
+    settings = _load_config("app_settings.json")
+    providers = [
+        p for p in provider_registry.configured_providers() if p.get("custom")
+    ]
+    if not providers:
+        raise RuntimeError("no custom provider configured")
+
+    order: list = []
     try:
-        client = jeff_router.client_from_settings(_load_config("app_settings.json"))
+        client = jeff_router.client_from_settings(settings)
     except Exception:
         client = None
-    decision = jeff_router.route(prompt, client=client)
-    reply = provider_registry.chat(
-        decision.provider,
+    try:
+        decision = jeff_router.route(prompt, client=client, providers=providers)
+        order.append(decision.provider)
+    except Exception as exc:
+        _log(f"routing failed, using provider order: {exc}")
+
+    reply, provider, errors = provider_registry.chat_failover(
         [
             {"role": "system", "content": _QA_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
+        providers=providers,
+        order=order,
         temperature=0.3,
     )
+    if errors:
+        _log(f"providers skipped before {provider.get('name')}: {'; '.join(errors)[:300]}")
     return (reply or "").strip()
 
 
@@ -342,10 +362,26 @@ def friendly_quick_action_error(action: str, err) -> str:
     """One spoken sentence instead of a raw provider traceback.
 
     The whole Gemini 429 payload - URLs, quota ids and all - used to be shown
-    as the chat reply. Failures are reported in one short, actionable line;
-    the raw text goes to the QA log for debugging instead.
+    as the chat reply. Failures are reported in one short, actionable line
+    that names the real problem; the raw text goes to the QA log.
     """
-    if is_quota_error(err):
+    text = str(err or "")
+    low = text.lower()
+    # "the provider is rate limited" and "your local server is not running"
+    # are different problems: only claim a quota when a quota answer exists,
+    # and prefer the connectivity explanation when a server was unreachable.
+    quota = is_quota_error(text)
+    unreachable = any(marker in low for marker in (
+        "connection", "refused", "timed out", "timeout", "not running",
+        "unreachable", "max retries", "getaddrinfo", "ssl",
+    ))
+    if unreachable and not quota:
+        return (
+            f"Sir, none of your AI providers answered, so I could not {action} that. "
+            "If you added a local provider, start its server (Ollama, LM Studio, ...); "
+            "otherwise press Test next to each provider in Settings, Custom AI Providers."
+        )
+    if quota:
         return (
             f"Sir, my AI provider's quota is used up, so I could not {action} that. "
             "Add another key in Settings, Custom AI Providers - Groq or OpenRouter "
