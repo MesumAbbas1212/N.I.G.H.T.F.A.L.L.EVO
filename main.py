@@ -134,6 +134,110 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
 
 
+#: Speech-generation models that can render Zephyr's voice, newest first. The
+#: first one that answers is remembered so later calls skip the dead ones.
+_TTS_MODELS = (
+    "gemini-2.5-flash-preview-tts",
+    "gemini-3.1-flash-tts-preview",
+    "gemini-2.5-flash-tts",
+)
+_tts_model_ok: str | None = None
+#: When speech generation fails, stop retrying it for a while: every status
+#: message would otherwise pay for three failed requests before falling back
+#: to the local voice.
+_tts_blocked_until: float = 0.0
+_TTS_COOLDOWN_QUOTA = 300.0
+_TTS_COOLDOWN_ERROR = 60.0
+
+
+def _tts_available() -> bool:
+    return time.time() >= _tts_blocked_until
+
+
+def _gemini_tts_pcm(text: str, voice: str = "Zephyr") -> bytes | None:
+    """Render *text* as Zephyr's voice, without a conversation.
+
+    This is a read-out, not a turn: the text is synthesized by the TTS model
+    and played locally, so it can never make the assistant answer its own
+    status message, call a tool, or save anything to memory.
+    """
+    global _tts_model_ok, _tts_blocked_until
+    if not _tts_available():
+        return None
+    try:
+        key = _get_api_key().strip()
+    except Exception:
+        return None
+    if not key:
+        return None
+
+    models = ([_tts_model_ok] if _tts_model_ok else []) + [
+        m for m in _TTS_MODELS if m != _tts_model_ok
+    ]
+    client = None
+    for model in models:
+        try:
+            if client is None:
+                client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice
+                            )
+                        )
+                    ),
+                ),
+            )
+            data = None
+            for candidate in (getattr(response, "candidates", None) or []):
+                content = getattr(candidate, "content", None)
+                for part in (getattr(content, "parts", None) or []):
+                    inline = getattr(part, "inline_data", None)
+                    if inline is not None and getattr(inline, "data", None):
+                        data = inline.data
+                        break
+                if data:
+                    break
+            if data:
+                _tts_model_ok = model
+                return data
+        except Exception as exc:
+            detail = str(exc)
+            print(f"[NIGHTFALL TTS] {model} failed: {detail[:160]}")
+            low = detail.lower()
+            if any(marker in low for marker in (
+                "429", "resource_exhausted", "resource exhausted", "quota",
+                "rate limit", "rate_limit", "too many requests",
+            )):
+                # Speech quota is gone: use the local voice until it resets.
+                _tts_blocked_until = time.time() + _TTS_COOLDOWN_QUOTA
+                return None
+            _tts_blocked_until = time.time() + _TTS_COOLDOWN_ERROR
+    return None
+
+
+def _play_pcm_audio(pcm: bytes, rate: int = RECEIVE_SAMPLE_RATE) -> bool:
+    """Play 16-bit mono PCM through the local sound device."""
+    try:
+        import numpy as np
+        import sounddevice as sd
+    except Exception as exc:
+        print(f"[NIGHTFALL TTS] playback unavailable: {exc}")
+        return False
+    try:
+        sd.play(np.frombuffer(pcm, dtype=np.int16), rate)
+        sd.wait()
+        return True
+    except Exception as exc:
+        print(f"[NIGHTFALL TTS] playback failed: {exc}")
+        return False
+
+
 def _is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.25)
@@ -2379,12 +2483,14 @@ class NIGHTFALLLive:
             except Exception:
                 pass
             if not getattr(self.ui, "muted", False):
+                # One voice only: the app's Zephyr read-out (which falls back
+                # to the local voice if TTS is unavailable).
                 try:
-                    from actions.attention_monitor import _speak_edge_native
-                    _speak_edge_native(reply)
+                    self.speak(reply, proactive=True)
                 except Exception:
                     try:
-                        self.speak(reply, proactive=True)
+                        from actions.attention_monitor import _speak_edge_native
+                        _speak_edge_native(reply)
                     except Exception:
                         pass
             try:
@@ -2474,11 +2580,11 @@ class NIGHTFALLLive:
                     pass
                 if not getattr(self.ui, "muted", False):
                     try:
-                        from actions.attention_monitor import _speak_edge_native
-                        _speak_edge_native(reply)
+                        self.speak(reply, proactive=True)
                     except Exception:
                         try:
-                            self.speak(reply, proactive=True)
+                            from actions.attention_monitor import _speak_edge_native
+                            _speak_edge_native(reply)
                         except Exception:
                             pass
             try:
@@ -4540,42 +4646,48 @@ class NIGHTFALLLive:
             self.ui.set_state("LISTENING")
 
     def speak(self, text: str, proactive: bool = False):
+        """Say *text* aloud in Zephyr's voice.
+
+        This is a read-out of app text (status updates, Quick Action answers,
+        notifications), not a conversation turn. It used to be injected into
+        the live session with "Please relay this information to me naturally
+        now", which made the model *answer* its own status messages - the chat
+        filled with "Acknowledged. I have..." bubbles, tool calls happened that
+        nobody asked for (a Quick Action answer containing "my name is sydro"
+        was saved to memory), and the relayed text came back paraphrased.
+
+        Now the text is synthesized directly with the TTS model in Zephyr's
+        voice and played locally: same voice, no turn, no tools, no memory.
+        """
         text = (text or "").strip()
         if not text:
             return
+        self._speak_verbatim(text)
 
-        if self.session and self._loop:
-            # Route text through Gemini Live API for the unified native Zephyr voice
-            import asyncio
-            async def _send():
+    def _speak_verbatim(self, text: str) -> None:
+        """Generate and play *text* without involving the conversation."""
+        def _worker():
+            try:
+                self.set_speaking(True)
+            except Exception:
+                pass
+            try:
+                pcm = _gemini_tts_pcm(text)
+                if pcm and _play_pcm_audio(pcm):
+                    return
+                # No TTS quota / offline: fall back to the local voice. Never
+                # fall back to a live turn - that is what caused the mess.
+                from actions.attention_monitor import _speak_edge_native
+                _speak_edge_native(text)
+            except Exception as exc:
+                print(f"[NIGHTFALL Speak] TTS failed: {exc}")
+            finally:
                 try:
-                    prompt = f"System Alert / Context: {text}\n\nPlease relay this information to me naturally now."
-                    await self.session.send(input=prompt, end_of_turn=True)
-                except Exception as e:
-                    print(f"[NIGHTFALL EVO] Unified Speak (Zephyr) err: {e}")
-                    def _fallback():
-                        try:
-                            self.set_speaking(True)
-                            from actions.attention_monitor import _speak_edge_native
-                            _speak_edge_native(text)
-                        except Exception as exc:
-                            print(f"[NIGHTFALL Speak] Fallback TTS failed: {exc}")
-                        finally:
-                            self.set_speaking(False)
-                    threading.Thread(target=_fallback, daemon=True).start()
-            asyncio.run_coroutine_threadsafe(_send(), self._loop)
-        else:
-            # Fallback when Gemini Live is disconnected or in offline mode
-            def _speak_thread():
-                try:
-                    self.set_speaking(True)
-                    from actions.attention_monitor import _speak_edge_native
-                    _speak_edge_native(text)
-                except Exception as exc:
-                    print(f"[NIGHTFALL Speak] Unified TTS failed: {exc}")
-                finally:
                     self.set_speaking(False)
-            threading.Thread(target=_speak_thread, daemon=True).start()
+                except Exception:
+                    pass
+
+        threading.Thread(target=_worker, daemon=True, name="nightfall-tts").start()
 
     def speak_error(self, tool_name: str, error: str):
         short = str(error)[:120]

@@ -116,6 +116,20 @@
   *Settings → Jeff Model Routing* (server URL, key, model). Without a server, a built-in heuristic router is used, so
   routing never breaks.
 
+### 🔎 Web search that actually searches
+- Several independent keyless backends are tried in order - Google News RSS for news questions, DuckDuckGo,
+  DuckDuckGo's no-JS endpoint, Bing, Wikipedia, and Gemini last - so one blocked or throttled service no longer
+  means "no results".
+- A search that could not run now says so ("SEARCH UNAVAILABLE … the search never ran") instead of claiming there
+  is no such news, and results carry their source and publication date.
+
+### 🔊 One voice: Zephyr
+- App text (status updates, Quick Action answers, notifications) is read out by synthesizing it directly in
+  Zephyr's voice and playing it locally - it is no longer injected into the live session as a turn. That relay
+  used to make the assistant answer its own status messages ("Acknowledged…") and even run tools on them.
+- If speech generation is unavailable, the local voice takes over, and a failed speech quota is not retried for
+  every message.
+
 ### 🪶 Resource use
 - Heavy stacks stay out of the boot path: OpenCV, mss, PortAudio and numpy are imported only when screen or
   camera capture actually runs, so startup no longer pays for features you may never use.

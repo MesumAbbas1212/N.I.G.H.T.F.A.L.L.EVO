@@ -1,8 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import os
 import platform
+import sys
 import re
 import sqlite3
 import tempfile
@@ -324,6 +325,13 @@ _current_speech_proc: Optional[subprocess.Popen] = None
 
 def _cleanup_current_audio() -> None:
     global _current_player_alias, _current_audio_path, _current_speech_proc
+    # Stop the in-app Zephyr TTS too, but only if its audio stack is already
+    # loaded (importing sounddevice here would pull in PortAudio at startup).
+    if "sounddevice" in sys.modules:
+        try:
+            sys.modules["sounddevice"].stop()
+        except Exception:
+            pass
     if _current_speech_proc is not None:
         try:
             _current_speech_proc.terminate()
