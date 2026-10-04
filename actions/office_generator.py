@@ -22,6 +22,17 @@ API_CONFIG_PATH = get_user_data_dir() / "config" / "api_keys.json"
 
 import concurrent.futures
 
+#: Why the last _call_gemini_json() returned None. Callers use this to tell a
+#: rate limit ("come back later") apart from a broken request, so they do not
+#: fire a dozen more calls that are doomed to fail the same way.
+LAST_ERROR: Optional[str] = None
+
+
+def _record_error(message: str) -> None:
+    global LAST_ERROR
+    LAST_ERROR = message
+
+
 def _call_gemini_json(
     prompt: str,
     system_instruction: str,
@@ -29,6 +40,8 @@ def _call_gemini_json(
     timeout: int = 14,
 ) -> Optional[dict]:
     """Generates structured JSON using Gemini with model failover, timeouts, and retries."""
+    global LAST_ERROR
+    LAST_ERROR = None
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             keys = json.load(f)
@@ -39,12 +52,10 @@ def _call_gemini_json(
             client = genai.Client(api_key=gemini_key)
 
             models_to_try = models or [
-                "gemini-3.1-flash-lite",
-                "gemini-3.5-flash-lite",
+                "gemini-2.5-flash",
                 "gemini-2.5-flash-lite",
                 "gemini-flash-latest",
-                "gemini-2.5-flash",
-                "gemini-3.6-flash",
+                "gemini-2.0-flash",
             ]
 
             def _query_model(m_name: str):
@@ -65,14 +76,32 @@ def _call_gemini_json(
                         resp = future.result(timeout=timeout)
                     if resp and resp.text:
                         clean = resp.text.strip()
-                        return json.loads(clean)
+                        try:
+                            return json.loads(clean)
+                        except Exception as parse_exc:
+                            # Usually a truncated response: the model ran into
+                            # its output-token ceiling mid-JSON.
+                            _record_error(
+                                f"invalid JSON from {model_name} "
+                                f"({len(clean)} chars): {parse_exc}"
+                            )
+                            logger.warning(
+                                f"[OfficeGen] Model {model_name} returned invalid JSON "
+                                f"({len(clean)} chars) - likely truncated"
+                            )
+                            continue
                 except concurrent.futures.TimeoutError:
-                    logger.warning(f"[OfficeGen] Model {model_name} timed out after 14s")
+                    _record_error(f"{model_name} timed out after {timeout}s")
+                    logger.warning(f"[OfficeGen] Model {model_name} timed out after {timeout}s")
                     continue
                 except Exception as e:
+                    _record_error(f"{model_name}: {e}")
                     logger.warning(f"[OfficeGen] Model {model_name} failed: {e}")
                     continue
+        else:
+            _record_error("no Gemini API key configured")
     except Exception as exc:
+        _record_error(str(exc))
         logger.warning(f"[OfficeGen] Gemini direct call error: {exc}")
 
     # Fallback to UnifiedAIClient if OpenRouter has key
@@ -81,9 +110,12 @@ def _call_gemini_json(
             or_key = json.load(f).get("openrouter_api_key", "").strip()
         if or_key:
             from llm_client import client as ai_client
-            return ai_client.chat_json(prompt, system=system_instruction)
-    except Exception:
-        pass
+            data = ai_client.chat_json(prompt, system=system_instruction)
+            if data is None:
+                _record_error("OpenRouter returned no JSON")
+            return data
+    except Exception as exc:
+        _record_error(f"OpenRouter: {exc}")
 
     return None
 

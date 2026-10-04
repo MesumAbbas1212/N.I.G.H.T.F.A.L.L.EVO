@@ -504,3 +504,130 @@ def test_button_retries_the_capture_then_answers(monkeypatch):
             break
         time.sleep(0.05)
     assert calls == [("explain", "late selection")]
+
+
+# -- quota failures ----------------------------------------------------------
+# A Gemini free-tier 429 used to be pasted into the chat verbatim - the whole
+# RESOURCE_EXHAUSTED payload with URLs and quota ids. One short, actionable
+# sentence is spoken instead, and the rate-limited provider is skipped.
+
+GEMINI_429 = (
+    "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your "
+    "current quota, please check your plan and billing details. For more information "
+    "on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.', "
+    "'status': 'RESOURCE_EXHAUSTED'}}"
+)
+
+
+def test_quota_errors_are_recognised():
+    assert qa.is_quota_error(GEMINI_429)
+    assert qa.is_quota_error(RuntimeError("rate limit reached"))
+    assert not qa.is_quota_error(RuntimeError("invalid api key"))
+
+
+def test_quota_failure_returns_one_short_sentence(monkeypatch):
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+
+    def exploding(prompt):
+        raise RuntimeError(GEMINI_429)
+
+    monkeypatch.setattr(qa, "_provider_backends", lambda: [exploding])
+
+    with pytest.raises(qa.QuickActionError) as info:
+        qa.quick_action_reply("translate", "hola")
+
+    message = str(info.value)
+    assert len(message) < 300, message
+    assert "quota" in message.lower()
+    assert "https://" not in message
+    assert "RESOURCE_EXHAUSTED" not in message
+
+
+def test_a_rate_limited_provider_is_skipped_next_time(monkeypatch):
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+    calls = []
+
+    def limited(prompt):
+        calls.append("limited")
+        raise RuntimeError(GEMINI_429)
+
+    def healthy(prompt):
+        calls.append("healthy")
+        return "translated text"
+
+    monkeypatch.setattr(qa, "_provider_backends", lambda: [limited, healthy])
+
+    assert qa.quick_action_reply("translate", "hola") == "translated text"
+    assert calls == ["limited", "healthy"]
+
+    # The next request does not even ask the rate-limited provider again.
+    calls.clear()
+    assert qa.quick_action_reply("summarize", "hola") == "translated text"
+    assert calls == ["healthy"]
+
+
+def test_non_quota_failure_is_also_reported_plainly(monkeypatch):
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+
+    def broken(prompt):
+        raise RuntimeError("invalid api key")
+
+    monkeypatch.setattr(qa, "_provider_backends", lambda: [broken])
+
+    with pytest.raises(qa.QuickActionError) as info:
+        qa.quick_action_reply("explain", "x")
+
+    assert "check the API keys" in str(info.value)
+
+
+def test_the_worker_posts_the_short_message(monkeypatch):
+    """What reaches the chat must be the sentence, not the provider payload."""
+    monkeypatch.setattr(qa, "_quota_blocked_until", {})
+    monkeypatch.setattr(
+        qa, "_provider_backends",
+        lambda: [lambda prompt: (_ for _ in ()).throw(RuntimeError(GEMINI_429))],
+    )
+
+    posted = []
+    ui = _FakeUI(_FakeWin(_FakeChat()), _FakeChat())
+    ui.write_log = lambda text: posted.append(text)
+    mgr = _manager(ui)
+
+    mgr._run_quick_action("translate", "hola")
+
+    for _ in range(60):
+        if any("NIGHTFALL Evo:" in line for line in posted):
+            break
+        time.sleep(0.05)
+
+    reply = next(line for line in posted if line.startswith("NIGHTFALL Evo:"))
+    assert "quota" in reply.lower()
+    assert "RESOURCE_EXHAUSTED" not in reply
+    assert "https://" not in reply
+
+
+# -- one voice ---------------------------------------------------------------
+
+def test_quick_action_replies_use_the_unified_voice(monkeypatch):
+    """Quick Actions used to answer in Edge TTS while the app spoke Zephyr."""
+    spoken = []
+    edge = []
+
+    import actions.attention_monitor as am
+
+    monkeypatch.setattr(am, "speak_native", lambda text, **k: spoken.append(text))
+    monkeypatch.setattr(am, "_speak_edge_native", lambda text, **k: edge.append(text))
+    monkeypatch.setattr(am, "stop_native_speech", lambda: None)
+    monkeypatch.setattr(qa, "quick_action_reply", lambda action, text: "translated text")
+
+    ui = _FakeUI(_FakeWin(_FakeChat()), _FakeChat())
+    mgr = _manager(ui)
+    mgr._run_quick_action("translate", "hola")
+
+    for _ in range(40):
+        if spoken:
+            break
+        time.sleep(0.05)
+
+    assert spoken == ["translated text"]
+    assert edge == []

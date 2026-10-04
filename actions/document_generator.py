@@ -32,6 +32,10 @@ DOCUMENT_TIMEOUT = 120
 #: A single section is short enough that it can never be truncated.
 SECTION_TIMEOUT = 90
 
+#: Sections written per request. Batching keeps a document inside a small daily
+#: quota (3 calls instead of 8) while staying short enough not to be truncated.
+SECTIONS_PER_CALL = 3
+
 #: Section headings used when no model can be reached for an outline.
 DEFAULT_SECTION_HEADINGS = [
     "1. Introduction",
@@ -98,6 +102,20 @@ SECTION_SYSTEM_INSTRUCTION = (
     "- Never describe what the section will do; write the section itself.\n"
     "- Define terms, give concrete mechanisms, numbers or examples where relevant.\n"
     "- 'bullets' is optional: 2 to 5 short key points when the section benefits.\n"
+    "- Keep the JSON valid: escape newlines, no trailing commas."
+)
+
+
+SECTION_BATCH_SYSTEM_INSTRUCTION = (
+    "You write several sections of a longer document. Return ONLY a valid JSON object:\n"
+    '{"sections": [{"heading": "The heading you were given", "body": "The finished prose", '
+    '"bullets": ["Key point", ...]}]}\n'
+    "Requirements:\n"
+    "- One entry per requested section, in the order given, keeping the given headings.\n"
+    "- 3 to 4 full paragraphs (roughly 250-350 words) per section of real, specific, "
+    "factual explanatory prose about the requested subject.\n"
+    "- Never describe what a section will do; write the section itself.\n"
+    "- 'bullets' is optional: 2 to 5 short key points when a section benefits.\n"
     "- Keep the JSON valid: escape newlines, no trailing commas."
 )
 
@@ -274,30 +292,137 @@ def _custom_chat(prompt: str, system: str, json_mode: bool = False) -> Optional[
     return None
 
 
-def _gemini_json(prompt: str, system: str, timeout: int) -> Optional[dict]:
+#: Rate-limit wording that means "asking Gemini again is pointless right now".
+_QUOTA_MARKERS = (
+    "429", "resource_exhausted", "resource exhausted", "quota",
+    "rate limit", "rate_limit", "too many requests",
+)
+
+
+class _Budget:
+    """Tracks which backends may still be used during one document run.
+
+    A rate limit is not a failure to retry: hammering the same provider with
+    seven more section requests wastes the user's daily quota and takes
+    minutes. Once Gemini answers 429, the run switches to another provider.
+    """
+
+    def __init__(self) -> None:
+        self.gemini_blocked = False
+        self.gemini_error = ""
+        self.used_provider = ""
+
+    def note_gemini_failure(self, message: str) -> None:
+        self.gemini_error = message or ""
+        if is_quota_error(message):
+            self.gemini_blocked = True
+
+    def note_provider(self, name: str) -> None:
+        self.used_provider = name
+
+    @property
+    def any_ai_wrote(self) -> bool:
+        return bool(self.used_provider)
+
+    @property
+    def reason(self) -> str:
+        if self.gemini_blocked:
+            return "Gemini's quota is used up"
+        if self.gemini_error:
+            return f"Gemini could not answer ({self.gemini_error[:80]})"
+        return "no AI provider is configured"
+
+
+def is_quota_error(err) -> bool:
+    text = str(err or "").lower()
+    return any(marker in text for marker in _QUOTA_MARKERS)
+
+
+def _local_model_name() -> str:
     try:
+        from core.user_paths import get_user_data_dir
+        path = get_user_data_dir() / "config" / "app_settings.json"
+        if path.exists():
+            data = _json.loads(path.read_text(encoding="utf-8"))
+            name = str(data.get("local_ai_model") or "").strip()
+            if name:
+                return name
+    except Exception:
+        pass
+    return "qwen2.5:3b"
+
+
+def _local_chat(prompt: str, system: str) -> Optional[str]:
+    """Last resort: a locally hosted model (Ollama / LM Studio).
+
+    This keeps documents real - and free - when every cloud key is out of
+    quota or unset.
+    """
+    try:
+        from core.local_brain import local_brain
+
+        if not local_brain.is_available():
+            return None
+        res = local_brain.chat_complete(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            model=_local_model_name(),
+            temperature=0.3,
+        )
+        text = ""
+        try:
+            text = str(res.get("choices", [{}])[0].get("message", {}).get("content", "") or "")
+        except Exception:
+            text = ""
+        text = text.strip()
+        return text or None
+    except Exception as exc:
+        print(f"[DocumentGen] local model unavailable: {exc}")
+        return None
+
+
+def _gemini_json(prompt: str, system: str, timeout: int, budget=None) -> Optional[dict]:
+    if budget is not None and budget.gemini_blocked:
+        return None
+    try:
+        from actions import office_generator
         from actions.office_generator import _call_gemini_json
     except Exception:
         return None
     try:
-        return _call_gemini_json(prompt, system, models=DOCUMENT_MODELS, timeout=timeout)
+        data = _call_gemini_json(prompt, system, models=DOCUMENT_MODELS, timeout=timeout)
+        if isinstance(data, dict):
+            if budget is not None:
+                budget.note_provider("Gemini")
+            return data
+        if budget is not None:
+            budget.note_gemini_failure(getattr(office_generator, "LAST_ERROR", "") or "")
+        return None
     except Exception as exc:
+        if budget is not None:
+            budget.note_gemini_failure(str(exc))
         print(f"[DocumentGen] Gemini call failed: {exc}")
         return None
 
 
-def _ask_json(prompt: str, system: str, timeout: int) -> Optional[dict]:
+def _ask_json(prompt: str, system: str, timeout: int, budget=None) -> Optional[dict]:
     """Structured answer from whichever AI backend is reachable."""
-    data = _gemini_json(prompt, system, timeout)
+    data = _gemini_json(prompt, system, timeout, budget)
     if isinstance(data, dict):
         return data
     raw = _custom_chat(prompt, system, json_mode=True)
-    return _loads_tolerant(raw) if raw else None
+    if raw:
+        if budget is not None:
+            budget.note_provider("a custom provider")
+        return _loads_tolerant(raw)
+    return None
 
 
-def _ask_text(prompt: str, system: str) -> Optional[str]:
+def _ask_text(prompt: str, system: str, budget=None) -> Optional[str]:
     """Plain-prose answer, used when JSON mode is unavailable or unreliable."""
-    data = _gemini_json(prompt, system, SECTION_TIMEOUT)
+    data = _gemini_json(prompt, system, SECTION_TIMEOUT, budget)
     if isinstance(data, dict):
         for key in ("body", "content", "text", "section"):
             value = str(data.get(key) or "").strip()
@@ -305,7 +430,14 @@ def _ask_text(prompt: str, system: str) -> Optional[str]:
                 return value
     raw = _custom_chat(prompt, system, json_mode=False)
     if raw and len(raw.strip()) > 80:
+        if budget is not None:
+            budget.note_provider("a custom provider")
         return _strip_fence(raw.strip())
+    text = _local_chat(prompt, system)
+    if text and len(text.strip()) > 80:
+        if budget is not None:
+            budget.note_provider("the local model")
+        return _strip_fence(text.strip())
     return None
 
 
@@ -351,19 +483,35 @@ def _default_outline(prompt: str, title: str = "") -> dict:
         "title": subject,
         "subtitle": "",
         "sections": [
-            {"heading": heading, "brief": f"Cover {heading.split(' ', 1)[-1].lower()} of {subject}."}
+            {"heading": heading, "brief": _default_brief(subject, heading)}
             for heading in DEFAULT_SECTION_HEADINGS
         ],
     }
 
 
-def _generate_outline(prompt: str) -> dict:
+def _default_brief(subject: str, heading: str) -> str:
+    """A usable brief for an outline the model never produced."""
+    focus = heading.split(" ", 1)[-1].strip().lower() or heading.lower()
+    return {
+        "introduction": f"What {subject} is, why it matters, and how the document is organised.",
+        "background": f"The history, origins and the problem {subject} was created to solve.",
+        "core concepts": f"The key definitions and terminology of {subject}, each defined precisely.",
+        "detailed analysis": f"How the parts of {subject} work and interact, and the trade-offs involved.",
+        "worked examples": f"Concrete worked examples showing {subject} applied step by step.",
+        "applications": f"Where {subject} is used in practice, and what it is used for.",
+        "conclusion": f"The main findings about {subject} and what to study next.",
+    }.get(focus, f"The essential material about {focus} within {subject}.")
+
+
+def _generate_outline(prompt: str, budget=None) -> dict:
+    """Plan the document: title, subtitle and section headings."""
     outline = _ask_json(
         "Plan a detailed document for this request:\n"
         f"{prompt}\n\n"
         "Give the document a specific title and 6-8 sections with briefs.",
         OUTLINE_SYSTEM_INSTRUCTION,
         60,
+        budget,
     )
     if not isinstance(outline, dict):
         return _default_outline(prompt)
@@ -373,26 +521,107 @@ def _generate_outline(prompt: str) -> dict:
     return outline
 
 
+#: Role-aware placeholder prose, used only when no AI backend can be reached at
+#: all. Each section gets its own text so the document still reads as a
+#: document rather than the same paragraph seven times.
+_SECTION_FALLBACKS = (
+    ("introduction",
+     "This report examines {topic}. It sets out what the subject is, why it matters, and "
+     "the terminology used throughout, so the sections that follow can be read in order "
+     "or dipped into individually.\n\n"
+     "The scope is deliberately practical: definitions first, then how the parts fit "
+     "together, then worked examples and applications. Where a term is used in more than "
+     "one sense in the literature, the sense used here is stated explicitly."),
+    ("background",
+     "The story of {topic} starts with the problem it was designed to solve rather than "
+     "with its definition. Earlier approaches ran into limits - cost, scale or precision - "
+     "and the ideas behind {topic} grew out of attempts to get past those limits.\n\n"
+     "Placing the subject in that context matters because most of its design choices are "
+     "answers to constraints that are easy to miss when the topic is met for the first "
+     "time. This section sets out that context and marks which parts are still current."),
+    ("core concept",
+     "The central ideas of {topic} are introduced here, together with the vocabulary used "
+     "for the rest of the document. Each term is defined before it is used, and related "
+     "terms are contrasted so they are not confused later.\n\n"
+     "The core mechanism is then described at the level of detail needed to reason about "
+     "it: what the components are, what each one does, and what is assumed about them."),
+    ("analysis",
+     "This section examines {topic} in more depth, looking at how the components interact "
+     "and why particular design choices are made. Each choice is weighed against the "
+     "alternatives so the trade-offs - and the situations in which they matter - are clear.\n\n"
+     "Where two approaches compete, the criteria that decide between them are stated "
+     "explicitly rather than left implicit, and the conditions under which each is the "
+     "better choice are identified."),
+    ("example",
+     "Concrete examples make the theory of {topic} checkable. The examples here are worked "
+     "through step by step, starting from the problem statement and finishing at the "
+     "result, so each step can be followed and reproduced.\n\n"
+     "The reasoning behind each step is spelled out: why that step comes next, what "
+     "assumption it relies on, and what would change if the assumption did not hold."),
+    ("application",
+     "The practical uses of {topic} are surveyed here, showing where the concepts matter "
+     "in real systems and workflows rather than only in theory. Typical uses are described "
+     "alongside the constraints that govern them.\n\n"
+     "Limits are included as well as strengths: knowing where {topic} stops being the "
+     "right tool is as useful as knowing where it works well."),
+    ("conclusion",
+     "The report closes by drawing together the main points about {topic}: what it is, how "
+     "it works, where it is used and what it costs. The aim is a short, accurate summary "
+     "that can be read on its own.\n\n"
+     "Areas where further study would be useful are noted, together with the sources or "
+     "lines of enquiry that would repay attention first."),
+)
+
+
 def _section_fallback(subject: str, heading: str, brief: str) -> str:
-    """Last-resort prose for one section: still subject-aware, never a stub."""
+    """Last-resort prose for one section when no AI backend can be reached."""
     topic = subject or "the subject"
-    focus = (brief or "").strip() or heading.split(" ", 1)[-1].lower()
+    low = (heading or "").lower()
+    for key, text in _SECTION_FALLBACKS:
+        if key in low:
+            return text.format(topic=topic)
     return (
-        f"{focus[:1].upper() + focus[1:]} is an essential part of {topic}. This section "
-        f"brings together the established material on {topic} and explains how it applies "
-        f"here, so the discussion can move from definitions to practical use.\n\n"
-        f"The key facts about {topic} in this area are presented in the order they are "
-        f"normally encountered: first the terminology and the problem being solved, then "
-        f"the mechanism or method involved, and finally the trade-offs that decide between "
-        f"competing choices. Each point is stated explicitly rather than implied, so the "
-        f"section can be read on its own.\n\n"
-        f"Where a concrete figure, formula or example clarifies the point, it is given "
-        f"directly in the text. Where sources disagree on a detail of {topic}, the "
-        f"mainstream position is presented first, followed by the notable exception."
+        _SECTION_FALLBACKS[2][1].format(topic=topic)
     )
 
 
-def _generate_section(subject: str, heading: str, brief: str, index: int, total: int) -> dict:
+def _sections_from_batch(data, batch: list) -> list:
+    """Map a batched answer back onto the planned headings."""
+    produced = _sections_from_data(data) if isinstance(data, dict) else []
+    out: list = []
+    for position, planned in enumerate(batch):
+        entry = produced[position] if position < len(produced) else None
+        body = str((entry or {}).get("body") or "").strip()
+        if len(body) < 120:
+            out.append(None)
+            continue
+        out.append({
+            "heading": planned.get("heading") or f"Section {position + 1}",
+            "body": body,
+            "bullets": list((entry or {}).get("bullets") or []),
+        })
+    return out
+
+
+def _generate_batch(subject: str, batch: list, start: int, total: int, budget=None) -> list:
+    """Write several sections in one request - fewer calls, less quota spent."""
+    listing = "\n".join(
+        f"{start + offset}. {entry.get('heading') or 'Section'}: "
+        f"{entry.get('brief') or 'the topic suggested by the heading'}"
+        for offset, entry in enumerate(batch)
+    )
+    prompt = (
+        f"Document subject: {subject}\n"
+        f"Write sections {start}-{start + len(batch) - 1} of {total}, in this order:\n"
+        f"{listing}\n\n"
+        "Write the finished prose for each of those sections now."
+    )
+    data = _ask_json(prompt, SECTION_BATCH_SYSTEM_INSTRUCTION, SECTION_TIMEOUT, budget)
+    return _sections_from_batch(data, batch)
+
+
+def _generate_section(subject: str, heading: str, brief: str, index: int, total: int,
+                      budget=None) -> dict:
     """Write one section of the document (the section itself, not a plan)."""
     prompt = (
         f"Document subject: {subject}\n"
@@ -400,7 +629,7 @@ def _generate_section(subject: str, heading: str, brief: str, index: int, total:
         f"What this section must cover: {brief or 'the topic suggested by the heading'}\n\n"
         f"Write the finished prose for this section now."
     )
-    data = _ask_json(prompt, SECTION_SYSTEM_INSTRUCTION, SECTION_TIMEOUT)
+    data = _ask_json(prompt, SECTION_SYSTEM_INSTRUCTION, SECTION_TIMEOUT, budget)
     body = ""
     bullets: list[str] = []
     if isinstance(data, dict):
@@ -410,7 +639,7 @@ def _generate_section(subject: str, heading: str, brief: str, index: int, total:
             raw_bullets = [b for b in re.split(r"[\n;]", raw_bullets)]
         bullets = [str(b).strip("-•* \t") for b in raw_bullets if str(b).strip()]
     if len(body) < 80:
-        text = _ask_text(prompt, SECTION_SYSTEM_INSTRUCTION)
+        text = _ask_text(prompt, SECTION_SYSTEM_INSTRUCTION, budget)
         if text and len(text) > len(body):
             body = text
             bullets = []
@@ -458,8 +687,10 @@ def generate_document_from_prompt(
     if speak:
         speak("Writing the full document content now, sir...")
 
+    budget = _Budget()
+
     # Pass 1: outline (small request, always fits).
-    outline = _generate_outline(prompt)
+    outline = _generate_outline(prompt, budget)
     doc_title = (title or "").strip() or str(outline.get("title") or "").strip() \
         or clean_document_title(prompt) or "NIGHTFALL AI Document"
     doc_subtitle = (subtitle or "").strip() or str(outline.get("subtitle") or "").strip()
@@ -467,31 +698,58 @@ def generate_document_from_prompt(
     planned = _planned_sections(outline)
     if not planned:
         planned = _planned_sections(_default_outline(prompt, doc_title))
-    planned = planned[:8]
+    planned = planned[:9]
 
-    # Pass 2: one small call per section, so nothing is ever truncated into
-    # invalid JSON (that is what used to produce a filler template).
+    # Pass 2: sections written in small batches (never one giant request, which
+    # is truncated into invalid JSON) - and no further Gemini calls once the
+    # provider has said its quota is exhausted.
     sections: list[dict] = []
     total = len(planned)
+    subject = doc_title or clean_document_title(prompt)
     _report_progress(player, 0, total, doc_title)
-    for index, planned_section in enumerate(planned, start=1):
-        heading = planned_section.get("heading") or f"Section {index}"
-        _report_progress(player, index - 1, total, heading)
-        body = str(planned_section.get("body") or "").strip()
-        bullets = list(planned_section.get("bullets") or [])
-        if len(body) < 80:
-            written = _generate_section(
-                doc_title or clean_document_title(prompt),
-                heading,
-                str(planned_section.get("brief") or planned_section.get("summary") or ""),
-                index,
-                total,
+
+    for start in range(0, total, SECTIONS_PER_CALL):
+        batch = planned[start:start + SECTIONS_PER_CALL]
+        _report_progress(player, start, total, str(batch[0].get("heading") or doc_title))
+        written_batch: list = [None] * len(batch)
+        if not any(str(entry.get("body") or "").strip() for entry in batch):
+            written_batch = _generate_batch(subject, batch, start + 1, total, budget)
+        for offset, planned_section in enumerate(batch):
+            index = start + offset + 1
+            heading = planned_section.get("heading") or f"Section {index}"
+            written = written_batch[offset]
+            if written is None:
+                body = str(planned_section.get("body") or "").strip()
+                bullets = list(planned_section.get("bullets") or [])
+                if len(body) < 80:
+                    one = _generate_section(
+                        subject,
+                        heading,
+                        str(planned_section.get("brief") or planned_section.get("summary") or ""),
+                        index,
+                        total,
+                        budget,
+                    )
+                    heading = heading or one.get("heading", "")
+                    body = one["body"]
+                    bullets = one["bullets"]
+            else:
+                heading = written.get("heading") or heading
+                body = written["body"]
+                bullets = written["bullets"]
+            sections.append({"heading": heading, "body": body, "bullets": bullets})
+            _report_progress(player, index, total, heading)
+
+    if not budget.any_ai_wrote and player is not None and hasattr(player, "write_log"):
+        # Never let placeholder prose masquerade as a written report.
+        try:
+            player.write_log(
+                "System Event: Document written with placeholder text - "
+                f"{budget.reason}. Add a key in Settings, Custom AI Providers "
+                "(Groq, OpenRouter, ...) for a fully written report."
             )
-            heading = heading or written.get("heading", "")
-            body = written["body"]
-            bullets = written["bullets"]
-        sections.append({"heading": heading, "body": body, "bullets": bullets})
-        _report_progress(player, index, total, heading)
+        except Exception:
+            pass
 
     params = {"action": "create_report", "title": doc_title, "auto_open": True}
     if doc_subtitle:

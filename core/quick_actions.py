@@ -138,6 +138,17 @@ _GEMINI_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lat
 _GEMINI_KEY_FIELDS = ("gemini_api_key", "google_api_key", "gemini_key")
 _DEFAULT_LOCAL_MODEL = "qwen2.5:3b"
 
+#: Provider answers that mean "come back later", not "this failed".
+_QUOTA_MARKERS = (
+    "429", "resource_exhausted", "resource exhausted", "quota",
+    "rate limit", "rate_limit", "too many requests",
+)
+#: A rate-limited provider is skipped for a while instead of being asked again
+#: on the next button press (a daily cap takes hours to reset, a per-minute cap
+#: does not, so the cooldown is deliberately short).
+_QUOTA_COOLDOWN_SECONDS = 300
+_quota_blocked_until: dict[str, float] = {}
+
 
 def _config_dirs() -> list[Path]:
     dirs: list[Path] = []
@@ -297,6 +308,43 @@ def _local_quick_reply(prompt: str) -> str:
     return text
 
 
+class QuickActionError(RuntimeError):
+    """A Quick Action failed - the message is already user-facing."""
+
+
+def is_quota_error(err) -> bool:
+    """True when the provider is rate-limited / out of quota."""
+    text = str(err or "").lower()
+    return any(marker in text for marker in _QUOTA_MARKERS)
+
+
+def _quota_blocked(name: str) -> bool:
+    return time.time() < _quota_blocked_until.get(name, 0.0)
+
+
+def _remember_quota_error(name: str) -> None:
+    _quota_blocked_until[name] = time.time() + _QUOTA_COOLDOWN_SECONDS
+
+
+def friendly_quick_action_error(action: str, err) -> str:
+    """One spoken sentence instead of a raw provider traceback.
+
+    The whole Gemini 429 payload - URLs, quota ids and all - used to be shown
+    as the chat reply. Failures are reported in one short, actionable line;
+    the raw text goes to the QA log for debugging instead.
+    """
+    if is_quota_error(err):
+        return (
+            f"Sir, my AI provider's quota is used up, so I could not {action} that. "
+            "Add another key in Settings, Custom AI Providers - Groq or OpenRouter "
+            "work well - and I will use it instead."
+        )
+    return (
+        f"Sir, I could not reach any AI provider to {action} that. "
+        "Please check the API keys in Settings."
+    )
+
+
 def quick_action_reply(action: str, text: str) -> str:
     """Answer a Quick Action request with a tool-free, memory-free completion.
 
@@ -306,16 +354,27 @@ def quick_action_reply(action: str, text: str) -> str:
     """
     prompt = build_quick_action_payload(action, text)
     errors: list[str] = []
+    quota = False
     for backend in _provider_backends():
+        name = getattr(backend, "__name__", "backend")
+        if _quota_blocked(name):
+            errors.append(f"{name}: skipped (rate limited)")
+            quota = True
+            continue
         try:
             reply = backend(prompt)
         except Exception as exc:
-            errors.append(f"{backend.__name__}: {exc}")
-            _log(f"quick action backend failed: {exc}")
+            if is_quota_error(exc):
+                quota = True
+                _remember_quota_error(name)
+            errors.append(f"{name}: {exc}")
+            _log(f"quick action backend failed: {name}: {str(exc)[:400]}")
             continue
         if reply and reply.strip():
             return reply.strip()
-    raise RuntimeError("; ".join(errors) or "no AI backend available")
+    joined = "; ".join(errors) or "no AI backend available"
+    _log(f"quick action ({action}) failed for every provider: {joined[:600]}")
+    raise QuickActionError(friendly_quick_action_error(action, joined))
 
 
 class _HotkeyBridge(QObject):
@@ -718,9 +777,13 @@ class QuickActionsManager(QObject):
             _log("worker started")
             try:
                 reply = quick_action_reply(action, text)
-            except Exception as exc:
+            except QuickActionError as exc:
+                # Already a short, user-facing sentence.
                 _log(f"quick action reply failed: {exc}")
-                reply = f"Quick Action ({action}) failed: {exc}"
+                reply = str(exc)
+            except Exception as exc:
+                _log(f"quick action reply failed: {type(exc).__name__}: {exc}")
+                reply = friendly_quick_action_error(action, exc)
             reply = (reply or "").strip() or "No reply."
             _log(f"reply ok {len(reply)} chars")
             try:
@@ -728,17 +791,19 @@ class QuickActionsManager(QObject):
             except Exception as exc:
                 _log(f"posting reply failed: {exc}")
             try:
-                # Speak the reply directly instead of routing it through the
-                # tool-enabled agent session, so answering a Quick Action can
-                # never trigger any other action.
-                from actions.attention_monitor import _speak_edge_native, stop_native_speech
+                # speak_native routes through the app's registered speech sink
+                # (the unified Zephyr live session) instead of a different
+                # offline voice, so a Quick Action answer sounds like every
+                # other answer. It still cannot trigger any other action: the
+                # sink only speaks the text.
+                from actions.attention_monitor import speak_native, stop_native_speech
                 stop_native_speech()
-                _speak_edge_native(reply)
+                speak_native(reply)
             except Exception as exc:
                 _log(f"speak failed: {exc}")
                 try:
-                    from actions.attention_monitor import speak_native
-                    speak_native(reply)
+                    from actions.attention_monitor import _speak_edge_native
+                    _speak_edge_native(reply)
                 except Exception as exc2:
                     _log(f"speak fallback failed: {exc2}")
             try:

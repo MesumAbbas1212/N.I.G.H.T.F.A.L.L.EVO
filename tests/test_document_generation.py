@@ -290,48 +290,82 @@ def _capture_word_document(monkeypatch):
     return captured
 
 
-def test_each_section_is_written_by_its_own_call(monkeypatch):
+OUTLINE_3 = {
+    "title": "MARIE Report",
+    "sections": [
+        {"heading": "1. Introduction", "brief": "what MARIE is"},
+        {"heading": "2. The Register Set", "brief": "AC, MAR, MBR"},
+        {"heading": "3. Conclusion", "brief": "summary"},
+    ],
+}
+
+
+def test_sections_are_written_in_small_batches(monkeypatch):
     import actions.document_generator as dg
 
     prompts = []
 
-    def fake_gemini_json(prompt, system, timeout):
-        prompts.append((prompt, system))
+    def fake_gemini_json(prompt, system, timeout, *a, **k):
+        prompts.append(prompt)
         if "Plan a detailed document" in prompt:
-            return {
-                "title": "MARIE Report",
-                "sections": [
-                    {"heading": "1. Introduction", "brief": "what MARIE is"},
-                    {"heading": "2. The Register Set", "brief": "AC, MAR, MBR"},
-                    {"heading": "3. Conclusion", "brief": "summary"},
-                ],
-            }
-        return {"body": "Real prose about MARIE. " * 20, "bullets": ["16-bit words"]}
+            return dict(OUTLINE_3)
+        return {
+            "sections": [
+                {"heading": heading, "body": f"Real prose about {heading}. " * 20,
+                 "bullets": ["16-bit words"]}
+                for heading in ("1. Introduction", "2. The Register Set", "3. Conclusion")
+            ]
+        }
 
     monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
     captured = _capture_word_document(monkeypatch)
 
     dg.generate_document_from_prompt("write a detailed report on MARIE")
 
-    # one outline call + one call per section, never a single giant request
-    assert len(prompts) == 4
+    # one outline call + one batch call - never one giant request, and never
+    # one call per section when a batch fits comfortably in the quota.
+    assert len(prompts) == 2
     assert len(captured["sections"]) == 3
     assert captured["title"] == "MARIE Report"
     for section in captured["sections"]:
         assert len(section["body"]) > 200
-        assert "Real prose about MARIE" in section["body"]
+        assert "Real prose" in section["body"]
     assert captured["sections"][0]["bullets"] == ["16-bit words"]
+
+
+def test_a_failed_batch_falls_back_to_single_section_calls(monkeypatch):
+    import actions.document_generator as dg
+
+    calls = []
+
+    def fake_gemini_json(prompt, system, timeout, *a, **k):
+        if "Plan a detailed document" in prompt:
+            return dict(OUTLINE_3)
+        calls.append(prompt)
+        if "Write sections" in prompt:  # the batch call fails
+            return None
+        return {"body": "Single-section prose about MARIE. " * 20, "bullets": []}
+
+    monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
+    monkeypatch.setattr(dg, "_ask_text", lambda *a, **k: None)
+    captured = _capture_word_document(monkeypatch)
+
+    dg.generate_document_from_prompt("write a detailed report on MARIE")
+
+    assert len(captured["sections"]) == 3
+    for section in captured["sections"]:
+        assert "Single-section prose" in section["body"]
 
 
 def test_sections_are_written_even_without_json_mode(monkeypatch):
     import actions.document_generator as dg
 
-    def fake_gemini_json(prompt, system, timeout):
+    def fake_gemini_json(prompt, system, timeout, *a, **k):
         if "Plan a detailed document" in prompt:
             return {"title": "MARIE", "sections": [{"heading": "1. Introduction", "brief": "x"}]}
         return None  # JSON mode failed for the section
 
-    def fake_ask_text(prompt, system):
+    def fake_ask_text(prompt, system, *a, **k):
         return "Plain prose fallback for the section, written out at length. " * 4
 
     monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
@@ -348,6 +382,8 @@ def test_outline_failure_still_produces_subject_aware_sections(monkeypatch):
 
     monkeypatch.setattr(dg, "_gemini_json", lambda *a, **k: None)
     monkeypatch.setattr(dg, "_ask_text", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_custom_chat", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_local_chat", lambda *a, **k: None)
     captured = _capture_word_document(monkeypatch)
 
     dg.generate_document_from_prompt("write a detailed report on MARIE")
@@ -358,6 +394,72 @@ def test_outline_failure_still_produces_subject_aware_sections(monkeypatch):
     body = " ".join(s["body"] for s in captured["sections"])
     assert "MARIE" in body
     assert "this report will" not in body.lower()
+    # The old placeholder leaked its own brief as a broken sentence
+    # ("Cover introduction of MARIE. is an essential part of MARIE.").
+    assert "Cover introduction of MARIE." not in body
+    # Placeholder sections must not all be the same paragraph.
+    assert len({s["body"] for s in captured["sections"]}) >= 5
+
+
+def test_a_quota_error_stops_the_rest_of_the_gemini_calls(monkeypatch):
+    """A 429 means "stop asking": the run must switch provider, not fire 7 more."""
+    import actions.document_generator as dg
+    import actions.office_generator as office
+
+    gemini_calls = []
+    provider_calls = []
+
+    def fake_gemini(prompt, system, model=None, timeout=0, **k):
+        gemini_calls.append(prompt)
+        office.LAST_ERROR = (
+            "gemini-2.5-flash: 429 RESOURCE_EXHAUSTED. You exceeded your current quota"
+        )
+        return None
+
+    def fake_custom_chat(prompt, system, json_mode=False):
+        provider_calls.append(prompt)
+        if "Plan a detailed document" in prompt:
+            return '{"title": "MARIE", "sections": [{"heading": "1. Intro", "brief": "b"}]}'
+        return '{"body": "Prose from another provider about MARIE. " }'
+
+    monkeypatch.setattr(office, "LAST_ERROR", "")
+    monkeypatch.setattr(dg, "_custom_chat", fake_custom_chat)
+    monkeypatch.setattr(office, "_call_gemini_json", fake_gemini)
+    captured = _capture_word_document(monkeypatch)
+
+    dg.generate_document_from_prompt("write a detailed report on MARIE")
+
+    # exactly one Gemini attempt (the outline), then the provider takes over
+    assert len(gemini_calls) == 1, gemini_calls
+    assert provider_calls, "the other provider was never asked"
+    assert captured["sections"]
+
+
+def test_placeholder_document_warns_the_user(monkeypatch):
+    """When no provider can be reached, say so - never pass filler off as a report."""
+    import actions.document_generator as dg
+
+    monkeypatch.setattr(dg, "_gemini_json", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_ask_text", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_custom_chat", lambda *a, **k: None)
+    monkeypatch.setattr(dg, "_local_chat", lambda *a, **k: None)
+    _capture_word_document(monkeypatch)
+
+    class FakePlayer:
+        def __init__(self):
+            self.logs = []
+
+        def write_log(self, message):
+            self.logs.append(message)
+
+        def update_task_workspace(self, **kwargs):
+            pass
+
+    player = FakePlayer()
+    dg.generate_document_from_prompt("write a detailed report on MARIE", player=player)
+
+    assert any("placeholder" in line.lower() for line in player.logs), player.logs
+    assert any("Custom AI Providers" in line for line in player.logs), player.logs
 
 
 def test_tolerant_json_parsing_handles_fences_and_prose():
@@ -373,7 +475,7 @@ def test_chunked_generation_reaches_the_docx_on_disk(tmp_path, monkeypatch):
     pytest.importorskip("docx")
     import actions.document_generator as dg
 
-    def fake_gemini_json(prompt, system, timeout):
+    def fake_gemini_json(prompt, system, timeout, *a, **k):
         if "Plan a detailed document" in prompt:
             return {
                 "title": "MARIE: A Detailed Report",
@@ -384,23 +486,36 @@ def test_chunked_generation_reaches_the_docx_on_disk(tmp_path, monkeypatch):
                     {"heading": "3. Conclusion", "brief": "summary of the report"},
                 ],
             }
-        if "Register Set" in prompt:
-            return {
-                "body": (
-                    "MARIE has seven registers that make the fetch-decode-execute cycle "
-                    "visible to a student. The accumulator holds operands and results, the "
-                    "memory address register carries the address being read or written, and "
-                    "the memory buffer register holds the word that travels to or from RAM."
-                ),
-                "bullets": ["AC holds intermediate results", "MAR addresses memory"],
-            }
         return {
-            "body": (
-                "This section explains the machine architecture that is really intuitive "
-                "and easy, known as MARIE, in the detail a course report requires. The "
-                "architecture is a von Neumann machine with a single 16-bit bus, so every "
-                "transfer can be followed one cycle at a time."
-            )
+            "sections": [
+                {
+                    "heading": "1. Introduction",
+                    "body": (
+                        "This section explains the machine architecture that is really "
+                        "intuitive and easy, known as MARIE, in the detail a course report "
+                        "requires. The architecture is a von Neumann machine with a single "
+                        "16-bit bus, so every transfer can be followed one cycle at a time."
+                    ),
+                },
+                {
+                    "heading": "2. Register Set",
+                    "body": (
+                        "MARIE has seven registers that make the fetch-decode-execute cycle "
+                        "visible to a student. The accumulator holds operands and results, the "
+                        "memory address register carries the address being read or written, "
+                        "and the memory buffer register holds the word that travels to RAM."
+                    ),
+                    "bullets": ["AC holds intermediate results", "MAR addresses memory"],
+                },
+                {
+                    "heading": "3. Conclusion",
+                    "body": (
+                        "The report closes by summarising MARIE: a deliberately small von "
+                        "Neumann machine that makes the fetch-decode-execute cycle visible, "
+                        "which is exactly why it is used to teach computer organisation."
+                    ),
+                },
+            ]
         }
 
     monkeypatch.setattr(dg, "_gemini_json", fake_gemini_json)
@@ -429,7 +544,7 @@ def test_document_writing_reports_progress(monkeypatch):
     """A multi-call document takes a while - the user must see it moving."""
     import actions.document_generator as dg
 
-    def fake_gemini_json(prompt, system, timeout):
+    def fake_gemini_json(prompt, system, timeout, *a, **k):
         if "Plan a detailed document" in prompt:
             return {"title": "T", "sections": [{"heading": "1. One"}, {"heading": "2. Two"}]}
         return {"body": "Long enough section prose. " * 10}

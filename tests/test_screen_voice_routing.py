@@ -104,7 +104,7 @@ def test_screen_tool_hands_the_frame_to_the_live_session(monkeypatch, main_modul
 
     assert started == [], "the separately-voiced vision module must not run"
     assert assistant._pending_screen_frame == (b"\xff\xd8fake-jpeg", "what is on my screen?")
-    assert "Screenshot captured" in response.response["result"]
+    assert "Screenshot attached" in response.response["result"]
 
 
 def test_screen_tool_falls_back_to_the_module_without_a_live_session(monkeypatch, main_module):
@@ -181,3 +181,59 @@ def test_send_screen_to_live_requires_a_session(monkeypatch, main_module):
     assert assistant._live_session_available() is True
     assistant.session = None
     assert assistant._live_session_available() is False
+
+
+# -- one screenshot, one answer ---------------------------------------------
+
+def test_a_repeated_screen_request_does_not_capture_again(monkeypatch, main_module):
+    """The model asking for the screen twice must not produce two answers.
+
+    Real sessions showed three "Executing screen_process" events with three
+    descriptions of the same screenshot, because the model called the tool
+    again after the frame had already been attached.
+    """
+    main = main_module
+    assistant = _assistant(monkeypatch, main)
+    captures = []
+
+    def fake_capture(self):
+        captures.append(1)
+        return b"\xff\xd8fake-jpeg"
+
+    monkeypatch.setattr(main.NIGHTFALLLive, "_capture_screen_bytes", fake_capture)
+    monkeypatch.setattr(main, "screen_process", lambda **kwargs: True)
+    monkeypatch.setattr(main.asyncio, "sleep", lambda *a, **k: _noop())
+
+    first = asyncio.run(
+        assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "what is on my screen?"}))
+    )
+    # deliver the frame, as the receive loop does after the tool response
+    asyncio.run(assistant._deliver_pending_screen_frame())
+
+    second = asyncio.run(
+        assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "what is on my screen?"}))
+    )
+    asyncio.run(assistant._deliver_pending_screen_frame())
+
+    assert len(captures) == 1, "the second request must reuse the attached frame"
+    assert "Screenshot attached" in first.response["result"]
+    assert "already received a screenshot" in second.response["result"]
+
+
+def test_the_cooldown_expires(monkeypatch, main_module):
+    main = main_module
+    assistant = _assistant(monkeypatch, main)
+    captures = []
+    monkeypatch.setattr(
+        main.NIGHTFALLLive, "_capture_screen_bytes",
+        lambda self: captures.append(1) or b"jpeg",
+    )
+    monkeypatch.setattr(main, "screen_process", lambda **kwargs: True)
+
+    asyncio.run(assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "screen"})))
+    # pretend the capture happened long ago
+    assistant._last_screen_capture_at -= 60
+    assistant._pending_screen_frame = None
+    asyncio.run(assistant._execute_tool(FakeFunctionCall("screen_process", {"text": "screen"})))
+
+    assert len(captures) == 2

@@ -2130,6 +2130,11 @@ class NIGHTFALLLive:
         #: (image bytes, question) captured for the live session by the
         #: screen_process tool, delivered right after the tool response.
         self._pending_screen_frame = None
+        #: When the screen was last captured. The model sometimes calls
+        #: screen_process several times in one turn; the cooldown turns the
+        #: repeats into "use the image you already have" instead of capturing
+        #: and answering the same screenshot three times.
+        self._last_screen_capture_at = 0.0
         self._attention_lock = threading.Lock()
         self._attention_monitor = AttentionMonitor(on_event=self._on_external_notification)
         try:
@@ -2436,6 +2441,13 @@ class NIGHTFALLLive:
             return True
         except Exception as exc:
             print(f"[NIGHTFALL EVO] Screen send to live session failed: {exc}")
+            return False
+
+    def _screen_frame_is_fresh(self, window: float = 20.0) -> bool:
+        """True when the screen was captured moments ago in the same turn."""
+        try:
+            return (time.time() - float(getattr(self, "_last_screen_capture_at", 0.0))) < window
+        except Exception:
             return False
 
     async def _deliver_pending_screen_frame(self) -> None:
@@ -3208,6 +3220,7 @@ class NIGHTFALLLive:
             if self._live_session_available() and not getattr(self.ui, "muted", False):
                 frame = self._capture_screen_bytes()
                 if frame and self._send_screen_to_live(text, frame):
+                    self._last_screen_capture_at = time.time()
                     try:
                         self.ui.update_task_workspace(
                             status="Screen sent to the voice session",
@@ -5003,18 +5016,27 @@ class NIGHTFALLLive:
                 # comes in the app's single voice (Zephyr).  The standalone
                 # vision module is only used when no live session exists.
                 if self._live_session_available() and not getattr(self.ui, "muted", False):
-                    frame = await asyncio.get_event_loop().run_in_executor(
-                        None, self._capture_screen_bytes
-                    )
-                    if frame:
-                        self._pending_screen_frame = (frame, screen_question)
+                    if self._screen_frame_is_fresh():
+                        # The model asked for the screen again in the same turn:
+                        # do not capture and describe the same screenshot twice.
                         result = (
-                            "Screenshot captured. It is being attached to your view right now: "
-                            "look at it and answer the user's question about the screen yourself, "
-                            "in your normal voice. Do not stay silent."
+                            "You already received a screenshot of this screen a moment ago "
+                            "(it is attached to this conversation). Answer the user's question "
+                            "from that image instead of capturing the screen again."
                         )
                     else:
-                        result = "Screen capture failed."
+                        frame = await asyncio.get_event_loop().run_in_executor(
+                            None, self._capture_screen_bytes
+                        )
+                        if frame:
+                            self._pending_screen_frame = (frame, screen_question)
+                            self._last_screen_capture_at = time.time()
+                            result = (
+                                "Screenshot attached to your view: answer the user's question "
+                                "about the screen from it now, in your normal voice."
+                            )
+                        else:
+                            result = "Screen capture failed."
                 else:
                     if hasattr(self, "set_scanning"):
                         self.ui.set_scanning(True, "SCANNING SCREEN")
