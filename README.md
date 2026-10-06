@@ -80,6 +80,10 @@
 - **System Settings**: Toggle Wi-Fi, adjust volume, screen brightness, dark/light themes, and monitor CPU/RAM/Battery metrics.
 - **Smart Window Control**: Minimize, maximize, tile, or arrange windows across multi-monitor setups.
 - **Clipboard Sentry**: Instant analysis, translation, formatting, or debugging of copied text/code.
+- **Large selections**: *Alt → Translate / Summarize / Explain* has no size limit. A long selection (a multi-page
+  assignment, say) is written to the clipboard by the source app only when it is read, so NIGHTFALL Evo keeps
+  asking and waits for the payload - up to several seconds - instead of declaring "nothing was selected", and the
+  text is passed on in full. A copy that never arrives leaves your own clipboard untouched.
 
 ### 📄 Autonomous Office & Document Architect
 - **Word (`.docx`)**: Generate formatted professional documents, reports, and resumes.

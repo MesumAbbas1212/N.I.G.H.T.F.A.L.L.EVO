@@ -43,8 +43,16 @@ _DEBOUNCE = 0.35
 #: Clipboard marker written before a copy attempt so that a successful copy
 #: is detectable even when the selected text equals the previous clipboard.
 _CAPTURE_SENTINEL = "__NIGHTFALL_CAPTURE__"
-#: How long to wait for the target app to put the selection on the clipboard.
+#: How long one Ctrl+C is given before the app is nudged again.
 _CAPTURE_WAIT = 0.8
+#: As long as the app may take to publish *anything* on the clipboard. A very
+#: long selection is a different case and gets ``_CAPTURE_BIG_WAIT`` instead.
+_CAPTURE_TOTAL_WAIT = 2.5
+#: Extra time allowed once the clipboard counter shows the app is writing a
+#: payload (a four-page selection can take seconds to serialise).
+_CAPTURE_BIG_WAIT = 8.0
+#: Clipboard poll interval while waiting for the copy.
+_CAPTURE_POLL = 0.05
 
 
 def _log(msg: str) -> None:
@@ -825,21 +833,154 @@ def _set_clipboard_text(text: str) -> bool:
         return False
 
 
+def _user32():
+    """``user32`` with 64-bit-safe prototypes (Windows only).
+
+    ctypes defaults window handles to 32-bit ints, so a 64-bit ``HWND`` could
+    be truncated on the way in or out: ``SetForegroundWindow`` would then be
+    handed an invalid handle and quietly do nothing, and ``GetForegroundWindow``
+    would report a value that never matches the real window. That is one of the
+    ways the retried capture used to send Ctrl+C to the wrong window.
+    """
+    user32 = ctypes.windll.user32
+    try:
+        user32.GetForegroundWindow.restype = ctypes.c_void_p
+        user32.GetFocus.restype = ctypes.c_void_p
+        user32.GetClipboardSequenceNumber.restype = ctypes.c_uint
+        user32.SendMessageTimeoutW.restype = ctypes.c_size_t
+        user32.SendMessageTimeoutW.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t,
+            ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t),
+        ]
+    except Exception:
+        pass
+    return user32
+
+
+def _wait_for_alt_release(timeout: float = 1.5) -> None:
+    """Wait until the hotkey is let go, so Ctrl+C is not sent mid-chord."""
+    try:
+        user32 = _user32()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not (user32.GetAsyncKeyState(_VK_ALT) & 0x8000):
+                break
+            time.sleep(0.1)
+    except Exception:
+        pass
+
+
+def _clipboard_sequence() -> int | None:
+    """Windows clipboard change counter, or ``None`` when unavailable.
+
+    The counter moves whenever any app puts something on the clipboard, even
+    when the new content is *identical* to what was there before. That is the
+    only reliable way to tell "the app is still serialising a large selection"
+    apart from "the app never copied anything" - comparing text against the
+    sentinel cannot, because a clipboard being written is not readable yet.
+    """
+    try:
+        return int(_user32().GetClipboardSequenceNumber())
+    except Exception:
+        return None
+
+
+def _clipboard_has_text() -> bool | None:
+    """Whether the clipboard offers a text format.
+
+    ``True``/``False`` when the answer is known, ``None`` when the clipboard
+    is locked (another app is mid-copy) and no conclusion can be drawn.
+    """
+    try:
+        user32 = _user32()
+        if not user32.OpenClipboard(None):
+            return None
+        try:            # CF_UNICODETEXT = 13
+            return bool(user32.IsClipboardFormatAvailable(13))
+        finally:
+            user32.CloseClipboard()
+    except Exception:
+        return None
+
+
+def _focus_window(hwnd) -> bool:
+    """Best-effort activation of the window that held the selection.
+
+    ``SetForegroundWindow`` is refused for a background process, which is why
+    the retry-after-click used to send Ctrl+C to whatever happened to be in
+    front (often the Quick Action overlay itself). The documented workaround is
+    to attach to the foreground thread for the duration of the call.
+    """
+    if not hwnd:
+        return False
+    try:
+        user32 = _user32()
+        if user32.GetForegroundWindow() == hwnd:
+            return True
+        try:
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE: un-minimise if needed
+        except Exception:
+            pass
+        if user32.SetForegroundWindow(hwnd):
+            return True
+        fg = user32.GetForegroundWindow()
+        fg_thread = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+        this_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+        if fg_thread and fg_thread != this_thread:
+            user32.AttachThreadInput(fg_thread, this_thread, True)
+            try:
+                user32.SetForegroundWindow(hwnd)
+                user32.BringWindowToTop(hwnd)
+            finally:
+                user32.AttachThreadInput(fg_thread, this_thread, False)
+        return user32.GetForegroundWindow() == hwnd
+    except Exception as exc:
+        _log(f"focus restore failed: {exc}")
+        return False
+
+
+def _pump_events() -> None:
+    """Keep the window painting while the clipboard is polled.
+
+    The capture runs on the GUI thread (that is where Qt's clipboard lives), so
+    a source app that needs seconds to write a big selection used to freeze the
+    interface - and the app looked dead on exactly the documents where the
+    capture was already slow. User input stays excluded: clicks cannot re-enter
+    the capture.
+    """
+    try:
+        from PyQt6.QtCore import QEventLoop
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+    except Exception:
+        pass
+
+
 def _send_ctrl_c():
+    """Ask the focused app to copy its selection (never blocks for long)."""
     # 1) Send WM_COPY (0x0301) to the focused control first. This is the
     #    same code-path as Edit->Copy in the target app and often works even
-    #    when synthesized keystrokes get intercepted.
+    #    when synthesized keystrokes get intercepted. SendMessageTimeout, not
+    #    SendMessage: a four-page selection can keep the target busy for
+    #    seconds and a synchronous send would freeze this process with it.
     try:
-        user32 = ctypes.windll.user32
+        user32 = _user32()
         WM_COPY = 0x0301
-        focus = user32.GetFocus()
-        if focus:
-            user32.SendMessageW(focus, WM_COPY, 0, 0)
-            _log("WM_COPY sent to focus")
-        fg = user32.GetForegroundWindow()
-        if fg:
-            user32.SendMessageW(fg, WM_COPY, 0, 0)
-            _log("WM_COPY sent to foreground window")
+        SMTO_ABORTIFHUNG = 0x0002
+        SMTO_BLOCK = 0x0001
+        result = ctypes.c_size_t()
+        for label, hwnd in (("focus", user32.GetFocus()),
+                            ("foreground window", user32.GetForegroundWindow())):
+            if not hwnd:
+                continue
+            sent = user32.SendMessageTimeoutW(
+                hwnd, WM_COPY, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 500,
+                ctypes.byref(result),
+            )
+            _log(f"WM_COPY sent to {label}: {sent}")
     except Exception as exc:
         _log(f"WM_COPY failed: {exc}")
 
@@ -850,11 +991,14 @@ def _send_ctrl_c():
         return
     except Exception:
         pass
-    user32 = ctypes.windll.user32
-    user32.keybd_event(_VK_CTRL, 0, 0, 0)
-    user32.keybd_event(_VK_C, 0, 0, 0)
-    user32.keybd_event(_VK_C, 0, 2, 0)
-    user32.keybd_event(_VK_CTRL, 0, 2, 0)
+    try:
+        user32 = _user32()
+        user32.keybd_event(_VK_CTRL, 0, 0, 0)
+        user32.keybd_event(_VK_C, 0, 0, 0)
+        user32.keybd_event(_VK_C, 0, 2, 0)
+        user32.keybd_event(_VK_CTRL, 0, 2, 0)
+    except Exception as exc:
+        _log(f"synthesised Ctrl+C failed: {exc}")
 
 
 class QuickActionsManager(QObject):
@@ -880,6 +1024,9 @@ class QuickActionsManager(QObject):
         #: Window that had focus when the hotkey fired, so a retried copy can
         #: be pointed back at the app the user selected text in.
         self._prev_hwnd = 0
+        #: Guards against re-entering a capture (a second Alt press while the
+        #: first copy is still being written by the source app).
+        self._capturing = False
 
     def start(self):
         _log("manager start")
@@ -892,14 +1039,10 @@ class QuickActionsManager(QObject):
         _log("in _on_hotkey")
         try:
             # Wait for Alt to be released before sending Ctrl+C
-            user32 = ctypes.windll.user32
-            for _ in range(15):
-                if not (user32.GetAsyncKeyState(_VK_ALT) & 0x8000):
-                    break
-                time.sleep(0.1)
+            _wait_for_alt_release()
             self._clipboard_before = _clipboard_text()
             try:
-                self._prev_hwnd = ctypes.windll.user32.GetForegroundWindow() or 0
+                self._prev_hwnd = _user32().GetForegroundWindow() or 0
             except Exception:
                 self._prev_hwnd = 0
             self._last_text = self._capture_selection()
@@ -909,50 +1052,96 @@ class QuickActionsManager(QObject):
         _log("showing overlay")
         self._overlay.show_near_cursor()
 
-    def _capture_selection(self, wait: float = _CAPTURE_WAIT) -> str:
+    def _capture_selection(self, wait: float = _CAPTURE_WAIT,
+                           total_wait: float = _CAPTURE_TOTAL_WAIT) -> str:
         """Copy the current selection from the focused app and return it.
 
         A sentinel is written to the clipboard first, so the copy can be
         detected even when the selection happens to match whatever was on the
-        clipboard before.  Apps are polled until the clipboard changes, up to
-        ``wait`` seconds; the original clipboard is restored when nothing was
-        selected.
+        clipboard before. The app is then polled until it publishes the
+        selection.
+
+        There is no size limit here: a large selection (a four-page document,
+        say) is serialised by the source app only when the clipboard is read,
+        and that can take several seconds. The old capture gave up after
+        two attempts of 0.8 s - mid-copy for anything big - and then reported
+        "Nothing was selected" while the user's own copy was still sitting on
+        the clipboard. Ctrl+C is now repeated every ``wait`` seconds, the
+        clipboard change counter extends the deadline while a big payload is
+        being written, and the text is read back in full.
         """
-        before = _clipboard_text()
-        selected = ""
-        _set_clipboard_text(_CAPTURE_SENTINEL)
+        if getattr(self, "_capturing", False):
+            _log("capture already in progress; ignoring this trigger")
+            return ""
+        self._capturing = True
         try:
-            user32 = ctypes.windll.user32
-            for _ in range(15):
-                if not (user32.GetAsyncKeyState(_VK_ALT) & 0x8000):
-                    break
-                time.sleep(0.1)
-        except Exception:
-            pass
-        attempt = 0
-        while True:
-            _send_ctrl_c()
-            attempt += 1
-            deadline = time.time() + wait
-            while time.time() < deadline:
-                time.sleep(0.05)
-                live = _clipboard_text().strip()
-                if live and live != _CAPTURE_SENTINEL:
-                    selected = live
-                    break
-            if selected:
+            return self._capture_selection_once(wait, total_wait)
+        finally:
+            self._capturing = False
+
+    def _capture_selection_once(self, wait: float, total_wait: float) -> str:
+        before = _clipboard_text()
+        ignore = _CAPTURE_SENTINEL
+        if not _set_clipboard_text(_CAPTURE_SENTINEL):
+            # The clipboard was busy (the previous owner can hold it locked
+            # while it writes a big selection). The sentinel never landed, so
+            # the old content must not be mistaken for the new selection: only
+            # a change of the clipboard counter proves a copy happened.
+            ignore = before
+            _log("could not write the clipboard marker; verifying by clipboard counter")
+        _wait_for_alt_release()
+        baseline = _clipboard_sequence()
+        started = time.time()
+        deadline = started + max(float(total_wait), float(wait))
+        next_nudge = started
+        attempts = 0
+        published = False
+        extended = False
+        selected = ""
+
+        while time.time() < deadline:
+            now = time.time()
+            if not published and now >= next_nudge:
+                # Keep nudging while the app has not published anything: some
+                # apps drop the first Ctrl+C while the window regains focus.
+                _send_ctrl_c()
+                attempts += 1
+                next_nudge = now + max(0.2, float(wait))
+            time.sleep(_CAPTURE_POLL)
+            _pump_events()
+            if not published and _clipboard_sequence() not in (None, baseline):
+                published = True
+                if not extended:
+                    # Something is being written. Give the app the time it
+                    # needs instead of failing halfway through a large copy.
+                    extended = True
+                    deadline = max(deadline, time.time() + _CAPTURE_BIG_WAIT)
+                    _log("clipboard changed; waiting for the app to finish writing it")
+            live = _clipboard_text().strip()
+            if live and live != ignore and live != _CAPTURE_SENTINEL:
+                selected = live
                 break
-            # Browsers and Electron apps frequently ignore the first Ctrl+C
-            # (the window may still be regaining focus) - give it one more try.
-            if attempt >= 2:
+            if published and not live and _clipboard_has_text() is False:
+                # A copy did happen and it contains no text at all: the app
+                # published an empty selection (nothing was highlighted).
+                _log("the app published an empty selection")
                 break
-            time.sleep(0.15)
-        if not selected:
+
+        elapsed = time.time() - started
+        if selected:
+            _log(
+                f"captured {len(selected)} chars in {elapsed:.2f}s "
+                f"(attempts={attempts}, waited_for_payload={extended})"
+            )
+        else:
+            # Put the user's clipboard back exactly as it was; their own copy
+            # must survive a failed capture, so they can still paste it.
             if before and before != _CAPTURE_SENTINEL:
                 _set_clipboard_text(before)
-            _log(f"capture produced no text (attempts={attempt})")
-        else:
-            _log(f"captured {len(selected)} chars (attempts={attempt})")
+            _log(
+                f"capture produced no text in {elapsed:.2f}s "
+                f"(attempts={attempts}, changed={published})"
+            )
         return selected
 
     def _ensure_chat_open(self):
@@ -972,20 +1161,21 @@ class QuickActionsManager(QObject):
             self._snipper.begin()
             return
         # Prefer the text captured when Alt was pressed. If there is none, the
-        # copy missed (browsers often need a second nudge) - retry now that the
-        # overlay is out of the way and the target window has focus back.
+        # copy may have been dropped or - for a long selection - still be in
+        # progress; retry now that the overlay is out of the way, with the
+        # target window focused and the full (large-selection) time budget.
         text = (getattr(self, "_last_text", "") or "").strip()
         if not text:
             _log("no text at click time; retrying capture")
             self._overlay.hide()
             time.sleep(0.15)
-            try:
-                if self._prev_hwnd:
-                    ctypes.windll.user32.SetForegroundWindow(self._prev_hwnd)
-                    time.sleep(0.15)
-            except Exception:
-                pass
-            text = self._capture_selection(wait=1.0)
+            if self._prev_hwnd:
+                if _focus_window(self._prev_hwnd):
+                    _log("target window focused for the retry")
+                else:
+                    _log("could not focus the target window; copying anyway")
+                time.sleep(0.15)
+            text = self._capture_selection()
             self._last_text = text
         if not text or text == _CAPTURE_SENTINEL:
             _log("no text captured; prompting the user")
@@ -993,7 +1183,9 @@ class QuickActionsManager(QObject):
             try:
                 self._ui.write_log(
                     "SYS: Nothing was selected. Highlight some text, then press Alt "
-                    "and choose Translate, Summarize or Explain."
+                    "and choose Translate, Summarize or Explain. Very long "
+                    "selections can take a few seconds to copy - give the app a "
+                    "moment before pressing Alt."
                 )
             except Exception:
                 pass

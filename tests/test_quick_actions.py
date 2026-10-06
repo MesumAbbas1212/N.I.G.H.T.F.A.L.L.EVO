@@ -7,6 +7,7 @@ tool/memory pipeline.
 """
 
 import time
+import time as _real_time
 from pathlib import Path
 
 import pytest
@@ -442,7 +443,7 @@ def test_capture_reports_no_selection_and_restores_the_clipboard(monkeypatch):
     clip = _FakeClipboard("previous clipboard text")
     _install_fake_clipboard(monkeypatch, clip)  # every Ctrl+C is ignored
 
-    assert mgr._capture_selection(wait=0.1) == ""
+    assert mgr._capture_selection(wait=0.1, total_wait=0.3) == ""
     assert clip.text == "previous clipboard text"
 
 
@@ -469,6 +470,265 @@ def test_capture_detects_a_selection_that_matches_the_old_clipboard(monkeypatch)
     _install_fake_clipboard(monkeypatch, clip, lambda n, board: setattr(board, "text", "same text"))
 
     assert mgr._capture_selection(wait=0.15) == "same text"
+
+
+# -- large selections ---------------------------------------------------------
+# "Nothing was selected" after selecting a whole four-page assignment: the
+# capture was a race against a tiny time budget. It allowed two Ctrl+C attempts
+# of 0.8 s, so an app that needed longer than ~1.75 s to serialise a big
+# selection was declared empty - and the user's own copy (which the failed
+# capture had put back on the clipboard) still pasted fine everywhere else.
+
+class _FakeClock:
+    """Virtual clock advanced by the code's own sleeps, so tests stay fast."""
+
+    def __init__(self, start: float = 1000.0):
+        self.now = float(start)
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += max(0.0, float(seconds))
+
+    # the *module* is aliased because ``time`` is also a method here
+    strftime = staticmethod(_real_time.strftime)
+
+
+class _SlowApp:
+    """A target app that copies its (possibly large) selection slowly."""
+
+    def __init__(self, clock: _FakeClock, text: str, publish_at=None, ignore_first=1,
+                 writable=True, has_text_format=True, initial=""):
+        self.clock = clock
+        self.selection = text
+        self.publish_at = publish_at
+        self.ignore_first = ignore_first
+        self.writable = writable
+        self.has_text_format = has_text_format
+        self.clipboard = initial
+        self.sequence = 1
+        self.nudges = 0
+        self.published = False
+
+    def read(self) -> str:
+        if self.publish_at is not None and self.clock.now >= self.publish_at:
+            self.clipboard = self.selection
+            self.published = True
+        return self.clipboard
+
+    def write(self, value: str) -> bool:
+        if not self.writable:
+            return False
+        self.clipboard = value
+        self.sequence += 1
+        return True
+
+    def ctrl_c(self) -> None:
+        self.nudges += 1
+        if self.nudges <= self.ignore_first:
+            return
+        if self.publish_at is None:
+            return
+        # The clipboard counter moves as soon as the app starts writing, even
+        # though the payload itself is not readable until it is rendered.
+        self.sequence += 1
+        self.published = True
+
+
+def _install_slow_app(monkeypatch, app: _SlowApp) -> qa.QuickActionsManager:
+    clock = app.clock
+    monkeypatch.setattr(qa, "time", clock)
+    monkeypatch.setattr(qa, "_pump_events", lambda: None)
+    monkeypatch.setattr(qa, "_wait_for_alt_release", lambda timeout=1.5: None)
+    monkeypatch.setattr(qa, "_clipboard_text", app.read)
+    monkeypatch.setattr(qa, "_set_clipboard_text", app.write)
+    monkeypatch.setattr(qa, "_send_ctrl_c", app.ctrl_c)
+    monkeypatch.setattr(qa, "_clipboard_sequence", lambda: app.sequence)
+    monkeypatch.setattr(
+        qa, "_clipboard_has_text",
+        lambda: app.has_text_format if app.published else None,
+    )
+    return _manager(_FakeUI(_FakeWin(_FakeChat()), _FakeChat()))
+
+
+def test_a_large_selection_is_captured_even_when_the_app_copy_is_slow(monkeypatch):
+    """A four-page assignment: ~24 000 characters, published after 2.6 s."""
+    clock = _FakeClock()
+    big = ("Assignment line. " * 1400).strip()
+    assert len(big) > 20000
+    # the app starts writing straight away but only finishes 2.6 s later
+    app = _SlowApp(clock, big, publish_at=clock.now + 2.6, ignore_first=0)
+    mgr = _install_slow_app(monkeypatch, app)
+
+    assert mgr._capture_selection() == big
+    assert app.nudges == 1, "a copy already in progress must not be interrupted"
+    assert clock.now - 1000.0 > qa._CAPTURE_TOTAL_WAIT, "the large-copy budget was used"
+
+
+def test_the_old_two_attempt_budget_would_have_failed_this(monkeypatch):
+    """Pin the regression: the copy lands after the old give-up point."""
+    clock = _FakeClock()
+    big = ("Assignment line. " * 1400).strip()
+    app = _SlowApp(clock, big, publish_at=clock.now + 2.6)
+    mgr = _install_slow_app(monkeypatch, app)
+
+    old_give_up = 2 * qa._CAPTURE_WAIT + 0.15
+    assert mgr._capture_selection() == big
+    assert clock.now - 1000.0 > old_give_up
+
+
+def test_the_big_budget_is_bounded(monkeypatch):
+    """A copy that never finishes must not hang the app forever."""
+    clock = _FakeClock()
+    app = _SlowApp(clock, "text", publish_at=clock.now + 1.0, ignore_first=0)
+    app.publish_at = None  # the counter moves, the payload never arrives
+    mgr = _install_slow_app(monkeypatch, app)
+
+    def start_writing():
+        app.sequence += 1
+
+    app.ctrl_c = lambda: (app.__setattr__("nudges", app.nudges + 1), start_writing())
+    monkeypatch.setattr(qa, "_send_ctrl_c", app.ctrl_c)
+
+    assert mgr._capture_selection() == ""
+    elapsed = clock.now - 1000.0
+    assert elapsed < qa._CAPTURE_BIG_WAIT + 1.0, elapsed
+
+
+def test_every_ctrl_c_nudge_is_retried_until_the_app_answers(monkeypatch):
+    clock = _FakeClock()
+    app = _SlowApp(clock, "third time lucky", publish_at=clock.now + 2.0, ignore_first=2)
+    mgr = _install_slow_app(monkeypatch, app)
+
+    assert mgr._capture_selection() == "third time lucky"
+    assert app.nudges >= 3, app.nudges
+
+
+def test_a_locked_clipboard_is_never_mistaken_for_the_selection(monkeypatch):
+    """The app holding the clipboard locked must not look like a copy.
+
+    ``_set_clipboard_text`` used to fail silently while another app was writing
+    a big payload; the previous clipboard content then read as "the selection".
+    """
+    clock = _FakeClock()
+    app = _SlowApp(clock, "whatever", publish_at=None, writable=False,
+                   initial="user's earlier copy")
+    mgr = _install_slow_app(monkeypatch, app)
+
+    assert mgr._capture_selection(total_wait=0.3) == ""
+    assert app.clipboard == "user's earlier copy"
+
+
+def test_an_empty_selection_is_reported_quickly(monkeypatch):
+    clock = _FakeClock()
+    app = _SlowApp(clock, "", publish_at=None, ignore_first=0, has_text_format=False)
+    mgr = _install_slow_app(monkeypatch, app)
+
+    assert mgr._capture_selection() == ""
+
+
+def test_a_very_long_selection_is_not_truncated(monkeypatch):
+    clock = _FakeClock()
+    huge = ("Paragraph of the assignment. " * 8000).strip()
+    assert len(huge) > 200000
+    app = _SlowApp(clock, huge, publish_at=clock.now + 0.3)
+    mgr = _install_slow_app(monkeypatch, app)
+
+    assert mgr._capture_selection() == huge
+
+
+class _FakeUser32:
+    """The bits of user32 the capture uses, recorded for inspection."""
+
+    def __init__(self):
+        self.calls = []
+        self.foreground = 100
+        self.sequence = 5
+
+    def GetForegroundWindow(self):
+        return self.foreground
+
+    def GetFocus(self):
+        return 0
+
+    def GetAsyncKeyState(self, vk):
+        return 0
+
+    def GetClipboardSequenceNumber(self):
+        return self.sequence
+
+    def GetWindowThreadProcessId(self, hwnd, out):
+        return 9
+
+    def SendMessageTimeoutW(self, *args):
+        self.calls.append(("SendMessageTimeoutW",) + args)
+        return 1
+
+    def OpenClipboard(self, owner):
+        self.calls.append(("OpenClipboard", owner))
+        return 1
+
+    def CloseClipboard(self):
+        return 1
+
+    def IsClipboardFormatAvailable(self, fmt):
+        return 1 if fmt == 13 else 0
+
+    def keybd_event(self, *args):
+        self.calls.append(("keybd_event",) + args)
+
+    def SetForegroundWindow(self, hwnd):
+        self.calls.append(("SetForegroundWindow", hwnd))
+        self.foreground = hwnd
+        return 1
+
+    def ShowWindow(self, hwnd, cmd):
+        return 1
+
+    def BringWindowToTop(self, hwnd):
+        return 1
+
+    def AttachThreadInput(self, *args):
+        return 1
+
+
+def test_windows_capture_helpers(monkeypatch):
+    """The Win32 path itself: a timeout on WM_COPY, and the clipboard probes."""
+    import ctypes
+    import sys
+    import types
+
+    fake = _FakeUser32()
+    monkeypatch.setattr(
+        ctypes, "windll",
+        types.SimpleNamespace(
+            user32=fake, kernel32=types.SimpleNamespace(GetCurrentThreadId=lambda: 7)
+        ),
+        raising=False,
+    )
+
+    class _NoDisplayPyAutoGUI:
+        def hotkey(self, *args):
+            raise RuntimeError("pyautogui needs a display")
+
+    monkeypatch.setitem(sys.modules, "pyautogui", _NoDisplayPyAutoGUI())
+
+    qa._send_ctrl_c()
+    sent = [call for call in fake.calls if call[0] == "SendMessageTimeoutW"]
+    assert sent, fake.calls
+    # a big selection must never block the GUI thread on a synchronous send
+    for call in sent:
+        flags, timeout = call[5], call[6]
+        assert timeout == 500
+        assert flags & 0x0002  # SMTO_ABORTIFHUNG
+    assert any(call[0] == "keybd_event" for call in fake.calls)
+
+    assert qa._clipboard_sequence() == 5
+    assert qa._clipboard_has_text() is True
+    assert qa._focus_window(4242) is True
+    assert ("SetForegroundWindow", 4242) in fake.calls
+    assert qa._focus_window(0) is False
 
 
 def test_button_without_a_selection_tells_the_user(monkeypatch):
