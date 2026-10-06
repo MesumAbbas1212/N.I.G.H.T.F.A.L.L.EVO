@@ -1,25 +1,23 @@
 ﻿{
-    "startup_animation_enabled": false,
-    "last_boot_stamp": 1789370581,
-    "boot_sequence_played": true,
-    "show_workspace_on_startup": false,
-    "launcher_pos": [
-        16,
-        617
-    ],
-    "launch_minimized": false,
-    "check_updates_on_startup": true,
-    "default_ai_provider": "Gemini",
-    "auto_provider_switch": false,
-    "attention_message_prompts": true,
-    "attention_call_prompts": true,
-    "developer_mode_enabled": true,
-    "developer_mode_workspace": "C:/Users/ravit/Downloads/NIGHTFALL Uploads",
-    "app_theme": "#ffb300",
-    "local_ai_url": "http://localhost:11434/v1",
-    "local_ai_model": "qwen2.5:3b",
-    "sound_effects_enabled": true,
-    "sound_effects_volume": 75,
-    "push_to_talk_enabled": false,
-    "offline_mode_enabled": false
+    "startup_animation_enabled":  true,
+    "last_boot_stamp":  1791091722,
+    "boot_sequence_played":  true,
+    "show_workspace_on_startup":  false,
+    "launcher_pos":  [
+                         1175,
+                         807
+                     ],
+    "launch_minimized":  false,
+    "check_updates_on_startup":  true,
+    "default_ai_provider":  "Gemini",
+    "auto_provider_switch":  true,
+    "attention_message_prompts":  true,
+    "attention_call_prompts":  true,
+    "developer_mode_enabled":  false,
+    "developer_mode_workspace":  "",
+    "app_theme":  "#00aaff",
+    "jeff_routing_enabled":  true,
+    "jeff_base_url":  "http://localhost:8000",
+    "jeff_api_key":  "devkey",
+    "jeff_model":  "jev-latest"
 }

@@ -579,6 +579,7 @@ def chat(
         "messages": ([{"role": "system", "content": system}] if system else []) + turns,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "stream": False,
     }
     resp = requests.post(
         _endpoint(provider, "/chat/completions"),

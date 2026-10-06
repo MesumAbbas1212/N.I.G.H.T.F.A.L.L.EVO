@@ -1,0 +1,27 @@
+﻿{
+    "agnes":  {
+                  "base_url":  "",
+                  "active":  true,
+                  "key":  "sk-T8Rq2MvdA5cJIKQzZI2UlVbFEWuzwRaNij2bjGgs6DXEQEz2"
+              },
+    "ainative":  {
+                     "base_url":  "https://api.ainative.studio/api/v1",
+                     "active":  true,
+                     "key":  "sk_fmsBlk2a4mpvdXbTQ0PEA8CGTFWE22iDAmSAu7PxNvE"
+                 },
+    "openrouter":  {
+                       "base_url":  "https://openrouter.ai/api/v1",
+                       "active":  true,
+                       "key":  ""
+                   },
+    "9router":  {
+                    "base_url":  "",
+                    "active":  true,
+                    "key":  "sk-dd466b395f225d62-6v62mc-f04ea5ab"
+                },
+    "unorouter":  {
+                      "base_url":  "",
+                      "active":  true,
+                      "key":  "sk-z6x0zWI7j5EDcDLHoI2146KKZLjBVJOTBncbcnXIAPA84IOZ"
+                  }
+}

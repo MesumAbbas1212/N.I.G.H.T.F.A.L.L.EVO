@@ -33,7 +33,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QAction, QBrush, QColor, QDragEnterEvent, QDropEvent, QFont,
     QIcon, QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
-    QRadialGradient, QShortcut,
+    QRadialGradient, QShortcut, QTextOption,
 )
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QDialog, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
@@ -2905,13 +2905,15 @@ class ChatBubble(QFrame):
 
         outer.addLayout(head)
 
-        self._browser = QLabel()
-        self._browser.setTextFormat(Qt.TextFormat.RichText)
+        self._browser = QTextEdit()
+        self._browser.setReadOnly(True)
+        self._browser.setFrameStyle(0)
         self._browser.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction | Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        self._browser.setOpenExternalLinks(True)
-        self._browser.setWordWrap(True)
+        self._browser.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self._browser.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        self._browser.setStyleSheet("QLabel { background: transparent; border: none; color: #f4f6f8; padding: 0; margin: 0; }")
+        self._browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._browser.setStyleSheet("QTextEdit { background: transparent; border: none; color: #f4f6f8; padding: 0; margin: 0; }")
         self._render_text(text or "")
 
         outer.addWidget(self._browser)
@@ -2961,7 +2963,14 @@ class ChatBubble(QFrame):
         return lbl
 
     def _render_text(self, text: str, final: bool = True):
-        self._browser.setText(_markdown_to_html(text or "", self._role))
+        self._browser.setHtml(_markdown_to_html(text or "", self._role))
+        doc = self._browser.document()
+        try:
+            doc.setTextWidth(max(120, self._browser.viewport().width()))
+        except Exception:
+            pass
+        sh = max(24, int(doc.size().height()) + 4)
+        self._browser.setFixedHeight(sh)
 
     def _start_typing_animation(self):
         self._typing_timer = QTimer(self)
